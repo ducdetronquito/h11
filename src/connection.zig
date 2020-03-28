@@ -1,10 +1,17 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Buffer = std.Buffer;
+const StatusLine = @import("parsers/status_line.zig").StatusLine;
 
 
 pub const ConnectionError = error {
     OutOfMemory,
+};
+
+
+pub const EventError = error {
+    NeedData,
+    RemoteProtocolError
 };
 
 
@@ -28,6 +35,10 @@ pub const Connection = struct {
         self.buffer.append(data) catch |err| switch (err) {
             error.OutOfMemory => { return ConnectionError.OutOfMemory; }
         };
+    }
+
+    pub fn nextEvent(self: *Connection) !void {
+        var statusLine = try StatusLine.parse(self.buffer);
     }
 };
 
