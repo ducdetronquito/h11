@@ -38,8 +38,9 @@ pub const Connection = struct {
     }
 
     pub fn nextEvent(self: *Connection) !void {
-        var stream = ByteStream.init(self.buffer.toSliceConst());
-        var statusLine = try StatusLine.parse(self.buffer);
+        var data = self.buffer.toSliceConst();
+        var stream = ByteStream.init(data);
+        var statusLine = try StatusLine.parse(&stream);
     }
 };
 

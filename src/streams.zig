@@ -7,7 +7,7 @@ pub const ByteStream = struct {
     }
 
     /// Read one line from the stream.
-    /// A line ends with CRLF.
+    /// Returns an empty line if CRLF is not found.
     pub fn readLine(self: *ByteStream) []const u8 {
         var start = self.cursor;
         var cursor = self.cursor;
@@ -22,12 +22,11 @@ pub const ByteStream = struct {
             cursor += 1;
         }
 
-        self.cursor = cursor;
-
         if (lineFound) {
+            self.cursor = cursor;
             return self.data[start..cursor - 2];
         } else {
-            return self.data[start..cursor];
+            return "";
         }
     }
 
@@ -36,6 +35,10 @@ pub const ByteStream = struct {
     pub fn read(self: *ByteStream, size: usize) void {
         self.cursor += size;
     }
+
+    pub fn len(self: *ByteStream) usize {
+        return self.data.len - cursor;
+    }
 };
 
 
@@ -43,20 +46,12 @@ const std = @import("std");
 const testing = std.testing;
 
 
-test "ReadLine - No CRLF returns the entire buffer" {
+test "ReadLine - No CRLF returns an empty line" {
     var stream = ByteStream.init("HTTP/1.1 200 OK");
 
     var line = stream.readLine();
 
-    testing.expect(std.mem.eql(u8, line, "HTTP/1.1 200 OK"));
-}
-
-test "ReadLine - No CRLF returns the remaining buffer" {
-    var stream = ByteStream.init("HTTP/1.1 200 OK");
-    stream.read(9);
-    var line = stream.readLine();
-
-    testing.expect(std.mem.eql(u8, line, "200 OK"));
+    testing.expect(std.mem.eql(u8, line, ""));
 }
 
 test "ReadLine - Read line returns the entire buffer" {
