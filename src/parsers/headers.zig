@@ -55,6 +55,10 @@ pub const Headers = struct {
         };
         return kv.value;
     }
+
+    pub fn put(self: *Headers, key: []const u8, value: []const u8) !void {
+        _ = try self.fields.put(key, value);
+    }
 };
 
 

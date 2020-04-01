@@ -1,5 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const Body = @import("parsers/body.zig").Body;
 const Buffer = std.Buffer;
 const ByteStream = @import("streams.zig").ByteStream;
 const Headers = @import("parsers/headers.zig").Headers;
@@ -42,7 +43,8 @@ pub const Connection = struct {
     pub fn nextEvent(self: *Connection) !void {
         var stream = ByteStream.init(self.buffer.toSliceConst());
         var statusLine = try StatusLine.parse(&stream);
-        var headers = Headers.parse(self.allocator, &stream);
+        var headers = try Headers.parse(self.allocator, &stream);
+        var body = try Body.parse(&stream, &headers);
     }
 };
 

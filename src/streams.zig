@@ -37,12 +37,15 @@ pub const ByteStream = struct {
 
     /// Read up to `size` bytes.
     /// FIXME: Currently implement just the cursor shift to be usable in the tests.
-    pub fn read(self: *ByteStream, size: usize) void {
+    pub fn read(self: *ByteStream, size: usize) []const u8 {
+        const end = std.math.min(size, self.len());
+        const result = self.data[self.cursor..end];
         self.cursor += size;
+        return result;
     }
 
     pub fn len(self: *ByteStream) usize {
-        return self.data.len - cursor;
+        return self.data.len - self.cursor;
     }
 };
 
@@ -68,7 +71,7 @@ test "ReadLine - Read line returns the entire buffer" {
 
 test "ReadLine - Read line returns the remaining buffer" {
     var stream = ByteStream.init("HTTP/1.1 200 OK\r\n");
-    stream.read(9);
+    _ = stream.read(9);
     var line = try stream.readLine();
 
     testing.expect(std.mem.eql(u8, line, "200 OK"));
@@ -83,4 +86,10 @@ test "ReadLine - Read lines one by one " {
     testing.expect(std.mem.eql(u8, firstLine, "HTTP/1.1 200 OK"));
     testing.expect(std.mem.eql(u8, secondLine, "Server: Apache"));
     testing.expect(std.mem.eql(u8, thirdLine, "Content-Length: 51"));
+}
+
+test "Read - Success " {
+    var stream = ByteStream.init("HTTP/1.1 200 OK");
+    var httpVersion = stream.read(8);
+    testing.expect(std.mem.eql(u8, httpVersion, "HTTP/1.1"));
 }
