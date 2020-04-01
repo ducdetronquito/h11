@@ -2,7 +2,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Buffer = std.Buffer;
 const StatusLine = @import("parsers/status_line.zig").StatusLine;
-
+const ByteStream = @import("streams.zig").ByteStream;
 
 pub const ConnectionError = error {
     OutOfMemory,
@@ -38,6 +38,7 @@ pub const Connection = struct {
     }
 
     pub fn nextEvent(self: *Connection) !void {
+        var stream = ByteStream.init(self.buffer.toSliceConst());
         var statusLine = try StatusLine.parse(self.buffer);
     }
 };
