@@ -28,7 +28,7 @@ pub const StatusLine = struct {
     }
 };
 
-const Allocator = std.mem.Allocator;
+
 const testing = std.testing;
 
 test "Parse - When the status line does not end with a CRLF - Returns error NeedData" {
