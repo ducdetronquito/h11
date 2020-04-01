@@ -1,3 +1,8 @@
+pub const ByteStreamError = error {
+    EndOfStream,
+};
+
+
 pub const ByteStream = struct {
     data: []const u8,
     cursor: usize,
@@ -8,7 +13,7 @@ pub const ByteStream = struct {
 
     /// Read one line from the stream.
     /// Returns an empty line if CRLF is not found.
-    pub fn readLine(self: *ByteStream) []const u8 {
+    pub fn readLine(self: *ByteStream) ![]const u8 {
         var start = self.cursor;
         var cursor = self.cursor;
 
@@ -26,7 +31,7 @@ pub const ByteStream = struct {
             self.cursor = cursor;
             return self.data[start..cursor - 2];
         } else {
-            return "";
+            return ByteStreamError.EndOfStream;
         }
     }
 
@@ -51,12 +56,12 @@ test "ReadLine - No CRLF returns an empty line" {
 
     var line = stream.readLine();
 
-    testing.expect(std.mem.eql(u8, line, ""));
+    testing.expectError(ByteStreamError.EndOfStream, line);
 }
 
 test "ReadLine - Read line returns the entire buffer" {
     var stream = ByteStream.init("HTTP/1.1 200 OK\r\n");
-    var line = stream.readLine();
+    var line = try stream.readLine();
 
     testing.expect(std.mem.eql(u8, line, "HTTP/1.1 200 OK"));
 }
@@ -64,16 +69,16 @@ test "ReadLine - Read line returns the entire buffer" {
 test "ReadLine - Read line returns the remaining buffer" {
     var stream = ByteStream.init("HTTP/1.1 200 OK\r\n");
     stream.read(9);
-    var line = stream.readLine();
+    var line = try stream.readLine();
 
     testing.expect(std.mem.eql(u8, line, "200 OK"));
 }
 
 test "ReadLine - Read lines one by one " {
     var stream = ByteStream.init("HTTP/1.1 200 OK\r\nServer: Apache\r\nContent-Length: 51\r\n");
-    var firstLine = stream.readLine();
-    var secondLine = stream.readLine();
-    var thirdLine = stream.readLine();
+    var firstLine = try stream.readLine();
+    var secondLine = try stream.readLine();
+    var thirdLine = try stream.readLine();
 
     testing.expect(std.mem.eql(u8, firstLine, "HTTP/1.1 200 OK"));
     testing.expect(std.mem.eql(u8, secondLine, "Server: Apache"));
