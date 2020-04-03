@@ -1,7 +1,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const StringHashMap = std.StringHashMap;
-const ByteStream = @import("../streams.zig").ByteStream;
+const Buffer = @import("../buffer.zig").Buffer;
 const ParserError = @import("errors.zig").ParserError;
 
 
@@ -19,12 +19,12 @@ pub const Headers = struct {
 
     // TODO: Implement header field name and value
     // https://tools.ietf.org/html/rfc7230#section-3.2.6
-    pub fn parse(allocator: *Allocator, stream: *ByteStream) !Headers {
+    pub fn parse(allocator: *Allocator, buffer: *Buffer) !Headers {
         var fields = StringHashMap([]const u8).init(allocator);
         errdefer fields.deinit();
 
         while (true) {
-            const line = stream.readLine() catch return ParserError.NeedData;
+            const line = buffer.readLine() catch return ParserError.NeedData;
             if (line.len == 0) {
                 break;
             }
@@ -65,20 +65,23 @@ pub const Headers = struct {
 const testing = std.testing;
 
 test "Parse - When the headers does not end with an empty line - Returns error NeedData" {
-    var buffer: [1024]u8 = undefined;
-    const allocator = &std.heap.FixedBufferAllocator.init(&buffer).allocator;
+    var memory: [1024]u8 = undefined;
+    const allocator = &std.heap.FixedBufferAllocator.init(&memory).allocator;
 
-    var stream = ByteStream.init("Server: Apache\r\nContent-Length: 51\r\n");
-    var headers = Headers.parse(allocator, &stream);
+    var buffer = Buffer.init(allocator);
+    try buffer.append("Server: Apache\r\nContent-Length: 51\r\n");
+    var headers = Headers.parse(allocator, &buffer);
+
     testing.expectError(ParserError.NeedData, headers);
 }
 
 test "Parse - Success" {
-    var buffer: [1024]u8 = undefined;
-    const allocator = &std.heap.FixedBufferAllocator.init(&buffer).allocator;
+    var memory: [1024]u8 = undefined;
+    const allocator = &std.heap.FixedBufferAllocator.init(&memory).allocator;
 
-    var stream = ByteStream.init("Server: Apache\r\nContent-Length: 51\r\n\r\n");
-    var headers = try Headers.parse(allocator, &stream);
+    var buffer = Buffer.init(allocator);
+    try buffer.append("Server: Apache\r\nContent-Length: 51\r\n\r\n");
+    var headers = try Headers.parse(allocator, &buffer);
 
     var server = try headers.get("Server");
     var contentLength = try headers.get("Content-Length");
@@ -88,11 +91,12 @@ test "Parse - Success" {
 }
 
 test "Parse - When space between field name and value is omited - Success" {
-    var buffer: [1024]u8 = undefined;
-    const allocator = &std.heap.FixedBufferAllocator.init(&buffer).allocator;
+    var memory: [1024]u8 = undefined;
+    const allocator = &std.heap.FixedBufferAllocator.init(&memory).allocator;
 
-    var stream = ByteStream.init("Server:Apache\r\nContent-Length:51\r\n\r\n");
-    var headers = try Headers.parse(allocator, &stream);
+    var buffer = Buffer.init(allocator);
+    try buffer.append("Server:Apache\r\nContent-Length:51\r\n\r\n");
+    var headers = try Headers.parse(allocator, &buffer);
 
     var server = try headers.get("Server");
     var contentLength = try headers.get("Content-Length");

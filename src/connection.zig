@@ -1,10 +1,9 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const Body = @import("parsers/body.zig").Body;
-const Buffer = std.Buffer;
-const ByteStream = @import("streams.zig").ByteStream;
-const Headers = @import("parsers/headers.zig").Headers;
-const StatusLine = @import("parsers/status_line.zig").StatusLine;
+const Body = @import("parsers.zig").Body;
+const Buffer = @import("buffer.zig").Buffer;
+const Headers = @import("parsers.zig").Headers;
+const StatusLine = @import("parsers.zig").StatusLine;
 
 
 pub const ConnectionError = error {
@@ -19,14 +18,12 @@ pub const EventError = error {
 
 
 pub const Connection = struct {
-    buffer: std.Buffer,
     allocator: *Allocator,
+    buffer: Buffer,
 
-    pub fn init(allocator: *Allocator) !Connection {
-        var buffer = Buffer.initSize(allocator, 0) catch |err| switch (err) {
-            error.OutOfMemory => { return ConnectionError.OutOfMemory; }
-        };
-        return Connection { .allocator = allocator, .buffer = buffer };
+    pub fn init(allocator: *Allocator) Connection {
+        var buffer = Buffer.init(allocator);
+        return Connection{ .allocator = allocator, .buffer = buffer };
     }
 
     pub fn deinit(self: *Connection) void {
@@ -35,16 +32,13 @@ pub const Connection = struct {
 
     /// Add data to the connection internal buffer.
     pub fn receiveData(self: *Connection, data: []const u8) !void {
-        self.buffer.append(data) catch |err| switch (err) {
-            error.OutOfMemory => { return ConnectionError.OutOfMemory; }
-        };
+        try self.buffer.append(data);
     }
 
     pub fn nextEvent(self: *Connection) !void {
-        var stream = ByteStream.init(self.buffer.toSliceConst());
-        var statusLine = try StatusLine.parse(&stream);
-        var headers = try Headers.parse(self.allocator, &stream);
-        var body = try Body.parse(&stream, &headers);
+        var statusLine = try StatusLine.parse(&self.buffer);
+        var headers = try Headers.parse(self.allocator, &self.buffer);
+        var body = try Body.parse(&self.buffer, &headers);
     }
 };
 
@@ -55,22 +49,15 @@ test "Init and deinit" {
     var buffer: [10]u8 = undefined;
     const allocator = &std.heap.FixedBufferAllocator.init(&buffer).allocator;
 
-    var connection = try Connection.init(allocator);
+    var connection = Connection.init(allocator);
     defer connection.deinit();
-}
-
-test "Init and deinit - Out of memory" {
-    var buffer: [1]u8 = undefined;
-    const allocator = &std.heap.FixedBufferAllocator.init(&buffer).allocator;
-
-    testing.expectError(ConnectionError.OutOfMemory, Connection.init(allocator));
 }
 
 test "Receive data" {
     var buffer: [10]u8 = undefined;
     const allocator = &std.heap.FixedBufferAllocator.init(&buffer).allocator;
 
-    var connection = try Connection.init(allocator);
+    var connection = Connection.init(allocator);
     defer connection.deinit();
 
     var data = "Hello";
@@ -81,9 +68,22 @@ test "Receive data - Out of memory" {
     var buffer: [10]u8 = undefined;
     const allocator = &std.heap.FixedBufferAllocator.init(&buffer).allocator;
 
-    var connection = try Connection.init(allocator);
+    var connection = Connection.init(allocator);
     defer connection.deinit();
 
     var data = "Hello World!";
-    testing.expectError(ConnectionError.OutOfMemory, connection.receiveData(data));
+    testing.expectError(error.OutOfMemory, connection.receiveData(data));
+}
+
+
+test "Read server response" {
+    var buffer: [1024]u8 = undefined;
+    const allocator = &std.heap.FixedBufferAllocator.init(&buffer).allocator;
+
+    var connection = Connection.init(allocator);
+    defer connection.deinit();
+    var responseData = "HTTP/1.1 200 OK`\r\nServer: Apache\r\nContent-Length: 51\r\nContent-Type: text/plain\r\n\r\nHello World! My payload includes a trailing CRLF.\r\n";
+    try connection.receiveData(responseData);
+
+    try connection.nextEvent();
 }
