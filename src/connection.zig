@@ -38,7 +38,16 @@ pub const Connection = struct {
     pub fn nextEvent(self: *Connection) !void {
         var statusLine = try StatusLine.parse(&self.buffer);
         var headers = try Headers.parse(self.allocator, &self.buffer);
-        var body = try Body.parse(&self.buffer, &headers);
+
+        const rawContentLength = headers.get("Content-Length") orelse {
+            return EventError.RemoteProtocolError;
+        };
+
+        const contentLength = std.fmt.parseInt(usize, rawContentLength.value, 10) catch {
+            return EventError.RemoteProtocolError;
+        };
+
+        var body = try Body.parse(&self.buffer, contentLength);
     }
 };
 
