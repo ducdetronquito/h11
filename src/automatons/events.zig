@@ -1,3 +1,18 @@
+const std = @import("std");
+const StringHashMap = std.StringHashMap;
+
+
+pub const Response = struct {
+    pub statusCode: i32,
+    pub reason: []const u8,
+    pub headers: StringHashMap([]const u8)
+};
+
+
+pub const Data = struct {
+    pub body: []const u8
+};
+
 
 pub const EventTag = enum {
     Response,
@@ -6,10 +21,9 @@ pub const EventTag = enum {
     ConnectionClosed,
 };
 
-
 pub const Event = union(EventTag) {
-    Response: struct { statusCode: i32, reason: []const u8 },
-    Data: struct {body: []const u8},
+    Response: Response,
+    Data: Data,
     EndOfMessage: void,
     ConnectionClosed: void,
 };

@@ -1,16 +1,16 @@
 const std = @import("std");
-const Buffer = @import("../buffer.zig").Buffer;
-const ParserError = @import("errors.zig").ParserError;
+const Buffer = @import("../../buffer.zig").Buffer;
+const EventError = @import("../errors.zig").EventError;
 
 
 pub const Body = struct {
     pub fn parse(buffer: *Buffer, contentLength: usize) ![]const u8 {
         var bufferSize = buffer.len();
         if (bufferSize < contentLength) {
-            return ParserError.NeedData;
+            return EventError.NeedData;
         }
         if (bufferSize > contentLength) {
-            return ParserError.BadFormat;
+            return EventError.RemoteProtocolError;
         }
 
         return buffer.read(contentLength);
@@ -28,10 +28,10 @@ test "Parse - When body is not completely received - Returns NeedData" {
     try bodyBuffer.append("Hello World!");
     var body = Body.parse(&bodyBuffer, 666);
 
-    testing.expectError(ParserError.NeedData, body);
+    testing.expectError(EventError.NeedData, body);
 }
 
-test "Parse - Bigger body than expected - Returns BadFormat" {
+test "Parse - Bigger body than expected - Returns RemoteProtocolError" {
     var memory: [1024]u8 = undefined;
     const allocator = &std.heap.FixedBufferAllocator.init(&memory).allocator;
 
@@ -39,7 +39,7 @@ test "Parse - Bigger body than expected - Returns BadFormat" {
     try bodyBuffer.append("Hello World!");
     var body = Body.parse(&bodyBuffer, 10);
 
-    testing.expectError(ParserError.BadFormat, body);
+    testing.expectError(EventError.RemoteProtocolError, body);
 }
 
 test "Parse - Success" {

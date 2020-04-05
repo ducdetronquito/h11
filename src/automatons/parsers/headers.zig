@@ -1,8 +1,8 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const StringHashMap = std.StringHashMap;
-const Buffer = @import("../buffer.zig").Buffer;
-const ParserError = @import("errors.zig").ParserError;
+const Buffer = @import("../../buffer.zig").Buffer;
+const EventError = @import("../errors.zig").EventError;
 
 
 pub const HeadersError = error {
@@ -18,7 +18,7 @@ pub const Headers = struct {
         errdefer fields.deinit();
 
         while (true) {
-            const line = buffer.readLine() catch return ParserError.NeedData;
+            const line = buffer.readLine() catch return EventError.NeedData;
             if (line.len == 0) {
                 break;
             }
@@ -55,7 +55,7 @@ test "Parse - When the headers does not end with an empty line - Returns error N
     try buffer.append("Server: Apache\r\nContent-Length: 51\r\n");
     var headers = Headers.parse(allocator, &buffer);
 
-    testing.expectError(ParserError.NeedData, headers);
+    testing.expectError(EventError.NeedData, headers);
 }
 
 test "Parse - Success" {
