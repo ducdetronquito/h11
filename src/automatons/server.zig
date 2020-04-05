@@ -14,7 +14,7 @@ const StatusLine = @import("parsers/status_line.zig").StatusLine;
 
 pub const ServerAutomaton = struct {
     allocator: *Allocator,
-    contentLength: usize = undefined,
+    contentLength: usize = 0,
     state: State,
 
     pub fn init(allocator: *Allocator) ServerAutomaton {
@@ -40,22 +40,18 @@ pub const ServerAutomaton = struct {
         var headers = try Headers.parse(self.allocator, buffer);
         errdefer headers.deinit();
 
-        const rawContentLength = headers.get("Content-Length") orelse {
-            return EventError.RemoteProtocolError;
-        };
-
-        const contentLength = std.fmt.parseInt(usize, rawContentLength.value, 10) catch {
-            return EventError.RemoteProtocolError;
-        };
-        self.contentLength = contentLength;
+        self.contentLength = try Headers.getContentLength(headers);
 
         return Event { .Response = Response{.statusCode = statusLine.statusCode, .reason = statusLine.reason, .headers = headers} };
     }
 
     fn nextEventWhenSendingBody(self: *ServerAutomaton, buffer: *Buffer) !Event {
-        var body = try Body.parse(buffer, self.contentLength);
+        if (!buffer.isEmpty()) {
+            var body = try Body.parse(buffer, self.contentLength);
+            return Event { .Data = Data {.body = body}};
+        }
 
-        return Event { .Data = Data {.body = body}};
+        return Event { .EndOfMessage = undefined };
     }
 
     pub fn changeState(self: *ServerAutomaton, event: Event) void {

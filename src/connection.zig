@@ -33,7 +33,6 @@ pub const Connection = struct {
 
     pub fn nextEvent(self: *Connection) !Event {
         return self.server.nextEvent(&self.buffer);
-        // var body = try Body.parse(&self.buffer, contentLength);
     }
 };
 
@@ -93,4 +92,25 @@ test "Read server response" {
 
     const dataEvent = try connection.nextEvent();
     testing.expect(std.mem.eql(u8, dataEvent.Data.body, "Hello World! My payload includes a trailing CRLF.\r\n"));
+
+    const endOfMessageEvent = try connection.nextEvent();
+    testing.expect(EventTag(endOfMessageEvent) == EventTag.EndOfMessage);
+}
+
+test "Read server response - No Content-Length header defaults to 0" {
+    var buffer: [1024]u8 = undefined;
+    const allocator = &std.heap.FixedBufferAllocator.init(&buffer).allocator;
+
+    var connection = Connection.init(allocator);
+    defer connection.deinit();
+    var responseData = "HTTP/1.1 200 OK\r\n\r\n";
+    try connection.receiveData(responseData);
+
+    const responseEvent = try connection.nextEvent();
+
+    testing.expect(responseEvent.Response.statusCode == 200);
+    testing.expect(std.mem.eql(u8, responseEvent.Response.reason, "OK"));
+
+    const endOfMessageEvent = try connection.nextEvent();
+    testing.expect(EventTag(endOfMessageEvent) == EventTag.EndOfMessage);
 }

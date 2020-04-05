@@ -58,6 +58,10 @@ pub const Buffer = struct {
         return self.data.len - self.cursor;
     }
 
+    pub fn isEmpty(self: *Buffer) bool {
+        return self.len() == 0;
+    }
+
     pub fn append(self: *Buffer, slice: []const u8) !void {
         const old_len = self.data.len;
         try self.data.resize(old_len + slice.len);

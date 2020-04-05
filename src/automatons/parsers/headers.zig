@@ -42,6 +42,18 @@ pub const Headers = struct {
 
         return fields;
     }
+
+    pub fn getContentLength(headers: StringHashMap([]const u8)) !usize {
+        const rawContentLength = headers.get("Content-Length") orelse {
+            return 0;
+        };
+
+        const contentLength = std.fmt.parseInt(usize, rawContentLength.value, 10) catch {
+            return EventError.RemoteProtocolError;
+        };
+
+        return contentLength;
+    }
 };
 
 
