@@ -1,9 +1,9 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const Body = @import("parsers.zig").Body;
 const Buffer = @import("buffer.zig").Buffer;
-const Headers = @import("parsers.zig").Headers;
-const StatusLine = @import("parsers.zig").StatusLine;
+const Event = @import("automatons.zig").Event;
+const EventTag = @import("automatons.zig").EventTag;
+const ServerAutomaton = @import("automatons.zig").ServerAutomaton;
 
 
 pub const ConnectionError = error {
@@ -11,19 +11,15 @@ pub const ConnectionError = error {
 };
 
 
-pub const EventError = error {
-    NeedData,
-    RemoteProtocolError
-};
-
-
 pub const Connection = struct {
     allocator: *Allocator,
     buffer: Buffer,
+    server: ServerAutomaton,
 
     pub fn init(allocator: *Allocator) Connection {
         var buffer = Buffer.init(allocator);
-        return Connection{ .allocator = allocator, .buffer = buffer };
+        var server = ServerAutomaton.init(allocator);
+        return Connection{ .allocator = allocator, .buffer = buffer, .server = server };
     }
 
     pub fn deinit(self: *Connection) void {
@@ -35,10 +31,9 @@ pub const Connection = struct {
         try self.buffer.append(data);
     }
 
-    pub fn nextEvent(self: *Connection) !void {
-        var statusLine = try StatusLine.parse(&self.buffer);
-        var headers = try Headers.parse(self.allocator, &self.buffer);
-        var body = try Body.parse(&self.buffer, &headers);
+    pub fn nextEvent(self: *Connection) !Event {
+        return self.server.nextEvent(&self.buffer);
+        // var body = try Body.parse(&self.buffer, contentLength);
     }
 };
 
@@ -82,8 +77,20 @@ test "Read server response" {
 
     var connection = Connection.init(allocator);
     defer connection.deinit();
-    var responseData = "HTTP/1.1 200 OK`\r\nServer: Apache\r\nContent-Length: 51\r\nContent-Type: text/plain\r\n\r\nHello World! My payload includes a trailing CRLF.\r\n";
+    var responseData = "HTTP/1.1 200 OK\r\nServer: Apache\r\nContent-Length: 51\r\nContent-Type: text/plain\r\n\r\nHello World! My payload includes a trailing CRLF.\r\n";
     try connection.receiveData(responseData);
 
-    try connection.nextEvent();
+    const responseEvent = try connection.nextEvent();
+
+    testing.expect(responseEvent.Response.statusCode == 200);
+    testing.expect(std.mem.eql(u8, responseEvent.Response.reason, "OK"));
+    const server = responseEvent.Response.headers.get("Server").?.value;
+    const contentLenght = responseEvent.Response.headers.get("Content-Length").?.value;
+    const contentType = responseEvent.Response.headers.get("Content-Type").?.value;
+    testing.expect(std.mem.eql(u8, server, "Apache"));
+    testing.expect(std.mem.eql(u8, contentLenght, "51"));
+    testing.expect(std.mem.eql(u8, contentType, "text/plain"));
+
+    const dataEvent = try connection.nextEvent();
+    testing.expect(std.mem.eql(u8, dataEvent.Data.body, "Hello World! My payload includes a trailing CRLF.\r\n"));
 }

@@ -1,8 +1,8 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const StringHashMap = std.StringHashMap;
-const Buffer = @import("../buffer.zig").Buffer;
-const ParserError = @import("errors.zig").ParserError;
+const Buffer = @import("../../buffer.zig").Buffer;
+const EventError = @import("../errors.zig").EventError;
 
 
 pub const HeadersError = error {
@@ -11,20 +11,14 @@ pub const HeadersError = error {
 
 
 pub const Headers = struct {
-    pub fields: StringHashMap([]const u8),
-
-    pub fn deinit(self: *Headers) void {
-        self.fields.deinit();
-    }
-
     // TODO: Implement header field name and value
     // https://tools.ietf.org/html/rfc7230#section-3.2.6
-    pub fn parse(allocator: *Allocator, buffer: *Buffer) !Headers {
+    pub fn parse(allocator: *Allocator, buffer: *Buffer) !StringHashMap([]const u8) {
         var fields = StringHashMap([]const u8).init(allocator);
         errdefer fields.deinit();
 
         while (true) {
-            const line = buffer.readLine() catch return ParserError.NeedData;
+            const line = buffer.readLine() catch return EventError.NeedData;
             if (line.len == 0) {
                 break;
             }
@@ -46,18 +40,7 @@ pub const Headers = struct {
             }
         }
 
-        return Headers{ .fields = fields };
-    }
-
-    pub fn get(self: *Headers, key: []const u8) ![]const u8 {
-        const kv = self.fields.get(key) orelse {
-            return HeadersError.NotFoud;
-        };
-        return kv.value;
-    }
-
-    pub fn put(self: *Headers, key: []const u8, value: []const u8) !void {
-        _ = try self.fields.put(key, value);
+        return fields;
     }
 };
 
@@ -72,7 +55,7 @@ test "Parse - When the headers does not end with an empty line - Returns error N
     try buffer.append("Server: Apache\r\nContent-Length: 51\r\n");
     var headers = Headers.parse(allocator, &buffer);
 
-    testing.expectError(ParserError.NeedData, headers);
+    testing.expectError(EventError.NeedData, headers);
 }
 
 test "Parse - Success" {
@@ -83,8 +66,8 @@ test "Parse - Success" {
     try buffer.append("Server: Apache\r\nContent-Length: 51\r\n\r\n");
     var headers = try Headers.parse(allocator, &buffer);
 
-    var server = try headers.get("Server");
-    var contentLength = try headers.get("Content-Length");
+    var server = headers.get("Server").?.value;
+    var contentLength = headers.get("Content-Length").?.value;
 
     testing.expect(std.mem.eql(u8, server, "Apache"));
     testing.expect(std.mem.eql(u8, contentLength, "51"));
@@ -98,8 +81,8 @@ test "Parse - When space between field name and value is omited - Success" {
     try buffer.append("Server:Apache\r\nContent-Length:51\r\n\r\n");
     var headers = try Headers.parse(allocator, &buffer);
 
-    var server = try headers.get("Server");
-    var contentLength = try headers.get("Content-Length");
+    var server = headers.get("Server").?.value;
+    var contentLength = headers.get("Content-Length").?.value;
 
     testing.expect(std.mem.eql(u8, server, "Apache"));
     testing.expect(std.mem.eql(u8, contentLength, "51"));
