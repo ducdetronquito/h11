@@ -4,46 +4,62 @@ const h11 = @import("h11");
 const testing = std.testing;
 
 test "Read server response" {
-    var buffer: [1024]u8 = undefined;
-    const allocator = &std.heap.FixedBufferAllocator.init(&buffer).allocator;
-
-    var connection = h11.Connection.init(allocator);
-    defer connection.deinit();
-    var responseData = "HTTP/1.1 200 OK\r\nServer: Apache\r\nContent-Length: 51\r\nContent-Type: text/plain\r\n\r\nHello World! My payload includes a trailing CRLF.\r\n";
-    try connection.receiveData(responseData);
-
-    const responseEvent = try connection.nextEvent();
-
-    testing.expect(responseEvent.Response.statusCode == 200);
-    testing.expect(std.mem.eql(u8, responseEvent.Response.reason, "OK"));
-    const server = responseEvent.Response.headers.get("Server").?.value;
-    const contentLenght = responseEvent.Response.headers.get("Content-Length").?.value;
-    const contentType = responseEvent.Response.headers.get("Content-Type").?.value;
-    testing.expect(std.mem.eql(u8, server, "Apache"));
-    testing.expect(std.mem.eql(u8, contentLenght, "51"));
-    testing.expect(std.mem.eql(u8, contentType, "text/plain"));
-
-    const dataEvent = try connection.nextEvent();
-    testing.expect(std.mem.eql(u8, dataEvent.Data.body, "Hello World! My payload includes a trailing CRLF.\r\n"));
-
-    const endOfMessageEvent = try connection.nextEvent();
-    testing.expect(h11.EventTag(endOfMessageEvent) == h11.EventTag.EndOfMessage);
+    var response = to_crlf_string(
+        \\HTTP/1.1 200 OK
+        \\Server: Apache
+        \\Content-Length: 12
+        \\Content-Type: text/plain
+        \\
+        \\Hello World!
+    );
+    try process_response_event(response);
 }
 
+
 test "Read server response - No Content-Length header defaults to 0" {
-    var buffer: [1024]u8 = undefined;
-    const allocator = &std.heap.FixedBufferAllocator.init(&buffer).allocator;
+    var response = to_crlf_string(
+        \\HTTP/1.1 200 OK
+        \\
+        \\
+    );
+    try process_response_event(response);
+}
+
+
+/// Process all events of a response buffer
+/// It will fail if the connection fail returns the following errors: NeedData or RemoteProtocolError
+fn process_response_event(content: []const u8) !void {
+    var memory: [1024]u8 = undefined;
+    const allocator = &std.heap.FixedBufferAllocator.init(&memory).allocator;
 
     var connection = h11.Connection.init(allocator);
     defer connection.deinit();
-    var responseData = "HTTP/1.1 200 OK\r\n\r\n";
-    try connection.receiveData(responseData);
 
-    const responseEvent = try connection.nextEvent();
+    try connection.receiveData(content);
 
-    testing.expect(responseEvent.Response.statusCode == 200);
-    testing.expect(std.mem.eql(u8, responseEvent.Response.reason, "OK"));
+    while (true) {
+        var event = try connection.nextEvent();
+        switch(event) {
+            h11.EventTag.EndOfMessage => break,
+            h11.EventTag.ConnectionClosed => break,
+            else => continue,
+        }
+    }
+}
 
-    const endOfMessageEvent = try connection.nextEvent();
-    testing.expect(h11.EventTag(endOfMessageEvent) == h11.EventTag.EndOfMessage);
+
+/// Dirty hacks to use multi-line strings on Windows but with unix line breaks.
+fn to_crlf_string(content: []const u8) []const u8 {
+    var buffer = std.ArrayList(u8).init(std.debug.global_allocator);
+    var cursor: usize = 0;
+
+    while (cursor < content.len) {
+        if (content[cursor] == '\n') {
+            buffer.append('\r') catch unreachable;
+        }
+        buffer.append(content[cursor]) catch unreachable;
+        cursor += 1;
+    }
+
+    return buffer.toSliceConst();
 }
