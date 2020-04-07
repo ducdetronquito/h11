@@ -2,7 +2,7 @@
 
 I/O free HTTP/1.1 implementation for Zig inspired by [hyper/h11](https://github.com/python-hyper/h11)
 
-[![License](https://img.shields.io/badge/license-public%20domain-ff69b4.svg)](https://github.com/ducdetronquito/h11#license)
+[![Build Status](https://api.travis-ci.org/ducdetronquito/h11.svg?branch=master)](https://travis-ci.org/ducdetronquito/h11)[![License](https://img.shields.io/badge/license-public%20domain-ff69b4.svg)](https://github.com/ducdetronquito/h11#license)
 
 ## Usage
 
