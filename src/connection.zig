@@ -1,9 +1,9 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Buffer = @import("buffer.zig").Buffer;
-const Event = @import("automatons.zig").Event;
-const EventTag = @import("automatons.zig").EventTag;
-const ServerAutomaton = @import("automatons.zig").ServerAutomaton;
+const Event = @import("automatons/events.zig").Event;
+const EventTag = @import("automatons/events.zig").EventTag;
+const ServerAutomaton = @import("automatons/server.zig").ServerAutomaton;
 
 
 pub const ConnectionError = error {
