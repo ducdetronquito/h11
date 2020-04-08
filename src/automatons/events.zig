@@ -4,7 +4,6 @@ const StringHashMap = std.StringHashMap;
 
 pub const Response = struct {
     pub statusCode: i32,
-    pub reason: []const u8,
     pub headers: StringHashMap([]const u8)
 };
 

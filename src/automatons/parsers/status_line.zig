@@ -5,10 +5,8 @@ const EventError = @import("../errors.zig").EventError;
 
 pub const StatusLine = struct {
     statusCode: i32,
-    reason: []const u8,
 
     pub fn parse(buffer: *Buffer) !StatusLine {
-        // Does not have a enough data to read the HTTP version and the status code.
         var line = buffer.readLine() catch return EventError.NeedData;
 
         if (line.len < 12) {
@@ -21,9 +19,8 @@ pub const StatusLine = struct {
         }
 
         const statusCode = std.fmt.parseInt(i32, line[9..12], 10) catch return EventError.RemoteProtocolError;
-        const reason = line[13..];
 
-        return StatusLine { .statusCode = statusCode, .reason = reason };
+        return StatusLine { .statusCode = statusCode };
     }
 };
 
@@ -72,5 +69,5 @@ test "Parse - Success" {
     var statusLine = try StatusLine.parse(&buffer);
 
     testing.expect(statusLine.statusCode == 405);
-    testing.expect(std.mem.eql(u8, statusLine.reason, "Method Not Allowed"));
+    testing.expect(buffer.isEmpty());
 }

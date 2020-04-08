@@ -42,7 +42,7 @@ pub const ServerAutomaton = struct {
 
         self.contentLength = try Headers.getContentLength(headers);
 
-        return Event { .Response = Response{.statusCode = statusLine.statusCode, .reason = statusLine.reason, .headers = headers} };
+        return Event { .Response = Response{.statusCode = statusLine.statusCode, .headers = headers} };
     }
 
     fn nextEventWhenSendingBody(self: *ServerAutomaton, buffer: *Buffer) !Event {
