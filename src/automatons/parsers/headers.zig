@@ -68,11 +68,27 @@ pub const Headers = struct {
     }
 
     pub fn parseFieldValue(data: []const u8) []const u8 {
-        if (Headers.isLinearWhitespace(data[0])) {
-            return data[1..];
-        } else {
-            return data;
+        // Leading and trailing whitespace are removed.
+        // Cf: https://tools.ietf.org/html/rfc7230#section-3.2.4
+        var cursor: usize = 0;
+        while (cursor < data.len) {
+            if (!Headers.isLinearWhitespace(data[cursor])) {
+                break;
+            }
+            cursor += 1;
         }
+
+        var start = cursor;
+
+        cursor = data.len - 1;
+        while (cursor > start) {
+            if (!Headers.isLinearWhitespace(data[cursor])) {
+                break;
+            }
+            cursor -= 1;
+        }
+
+        return data[start..cursor + 1];
     }
 
     // Cf: https://tools.ietf.org/html/rfc7230#section-3.2.3
@@ -116,19 +132,14 @@ test "Parse field value" {
     testing.expect(std.mem.eql(u8, value, "Apache"));
 }
 
-test "Parse field value - Ignore leading whitespace" {
-    var value = Headers.parseFieldValue(" Apache");
+test "Parse field value - Ignore leading and trailing whitespace" {
+    var value = Headers.parseFieldValue(" \t  Apache   \t ");
     testing.expect(std.mem.eql(u8, value, "Apache"));
 }
 
 test "Parse field value - Ignore leading htab character" {
     var value = Headers.parseFieldValue("\tApache");
     testing.expect(std.mem.eql(u8, value, "Apache"));
-}
-
-test "Parse field value - Trailing whitespaces are kept" {
-    var value = Headers.parseFieldValue("Apache     ");
-    testing.expect(std.mem.eql(u8, value, "Apache     "));
 }
 
 test "Parse header field - When colon is missing - Returns error RemoteProtocolError" {
