@@ -40,6 +40,7 @@ fn process_response_event(content: []const u8) !void {
     while (true) {
         var event = try connection.nextEvent();
         switch(event) {
+            h11.EventTag.Response => |response| response.deinit(),
             h11.EventTag.EndOfMessage => break,
             h11.EventTag.ConnectionClosed => break,
             else => continue,

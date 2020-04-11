@@ -11,7 +11,6 @@ const Headers = @import("parsers/headers.zig").Headers;
 const State = @import("states.zig").State;
 const StatusLine = @import("parsers/status_line.zig").StatusLine;
 
-
 pub const ServerAutomaton = struct {
     allocator: *Allocator,
     contentLength: usize = 0,
@@ -29,7 +28,7 @@ pub const ServerAutomaton = struct {
             event = try self.nextEventWhenSendingBody(buffer);
         } else {
             self.state = State.Error;
-            event = Event {.ConnectionClosed = undefined};
+            event = Event{ .ConnectionClosed = undefined };
         }
         self.changeState(event);
         return event;
@@ -40,38 +39,49 @@ pub const ServerAutomaton = struct {
         var headers = try Headers.parse(self.allocator, buffer);
         errdefer headers.deinit();
 
-        self.contentLength = try Headers.getContentLength(headers);
+        var rawContentLength: []const u8 = "0";
+        for (headers.toSliceConst()) |header| {
+            if (std.mem.eql(u8, header.name, "content-length")) {
+                rawContentLength = header.value;
+            }
+        }
 
-        return Event { .Response = Response{.statusCode = statusLine.statusCode, .headers = headers} };
+        const contentLength = std.fmt.parseInt(usize, rawContentLength, 10) catch {
+            return EventError.RemoteProtocolError;
+        };
+
+        self.contentLength = contentLength;
+
+        return Event{ .Response = Response{ .statusCode = statusLine.statusCode, .headers = headers } };
     }
 
     fn nextEventWhenSendingBody(self: *ServerAutomaton, buffer: *Buffer) !Event {
         if (!buffer.isEmpty()) {
             var body = try Body.parse(buffer, self.contentLength);
-            return Event { .Data = Data {.body = body}};
+            return Event{ .Data = Data{ .body = body } };
         }
 
-        return Event { .EndOfMessage = undefined };
+        return Event{ .EndOfMessage = undefined };
     }
 
     pub fn changeState(self: *ServerAutomaton, event: Event) void {
-        switch(self.state) {
+        switch (self.state) {
             State.Idle => {
-                switch(event) {
+                switch (event) {
                     EventTag.ConnectionClosed => self.state = State.Closed,
                     EventTag.Response => self.state = State.SendBody,
                     else => self.state = State.Error,
                 }
             },
             State.SendBody => {
-                switch(event) {
+                switch (event) {
                     EventTag.Data => self.state = State.SendBody,
                     EventTag.EndOfMessage => self.state = State.Done,
                     else => self.state = State.Error,
                 }
             },
             State.Done => {
-                switch(event) {
+                switch (event) {
                     EventTag.ConnectionClosed => self.state = State.Closed,
                     else => self.state = State.Error,
                 }
