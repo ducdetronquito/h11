@@ -10,18 +10,18 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const StringHashMap = std.StringHashMap;
+const ArrayList = std.ArrayList;
 const Buffer = @import("../../buffer.zig").Buffer;
 const EventError = @import("../errors.zig").EventError;
 
-const HeaderField = struct {
-    name: []const u8,
-    value: []const u8,
+pub const HeaderField = struct {
+    pub name: []const u8,
+    pub value: []const u8,
 };
 
 pub const Headers = struct {
-    pub fn parse(allocator: *Allocator, buffer: *Buffer) !StringHashMap([]const u8) {
-        var fields = StringHashMap([]const u8).init(allocator);
+    pub fn parse(allocator: *Allocator, buffer: *Buffer) !ArrayList(HeaderField) {
+        var fields = ArrayList(HeaderField).init(allocator);
         errdefer fields.deinit();
 
         while (true) {
@@ -31,7 +31,7 @@ pub const Headers = struct {
             }
 
             const field = try Headers.parseHeaderField(allocator, line);
-            _ = try fields.put(field.name, field.value);
+            try fields.append(field);
         }
 
         return fields;
@@ -88,24 +88,12 @@ pub const Headers = struct {
             cursor -= 1;
         }
 
-        return data[start..cursor + 1];
+        return data[start .. cursor + 1];
     }
 
     // Cf: https://tools.ietf.org/html/rfc7230#section-3.2.3
     fn isLinearWhitespace(char: u8) bool {
         return char == ' ' or char == '\t';
-    }
-
-    pub fn getContentLength(headers: StringHashMap([]const u8)) !usize {
-        const rawContentLength = headers.get("content-length") orelse {
-            return 0;
-        };
-
-        const contentLength = std.fmt.parseInt(usize, rawContentLength.value, 10) catch {
-            return EventError.RemoteProtocolError;
-        };
-
-        return contentLength;
     }
 };
 
@@ -168,25 +156,10 @@ test "Parse" {
     var buffer = Buffer.init(allocator);
     try buffer.append("server: Apache\r\ncontent-length: 51\r\n\r\n");
     var headers = try Headers.parse(allocator, &buffer);
+    defer headers.deinit();
 
-    var server = headers.get("server").?.value;
-    var contentLength = headers.get("content-length").?.value;
-
-    testing.expect(std.mem.eql(u8, server, "Apache"));
-    testing.expect(std.mem.eql(u8, contentLength, "51"));
-}
-
-test "Parse" {
-    var memory: [1024]u8 = undefined;
-    const allocator = &std.heap.FixedBufferAllocator.init(&memory).allocator;
-
-    var buffer = Buffer.init(allocator);
-    try buffer.append("server: Apache\r\ncontent-length: 51\r\n\r\n");
-    var headers = try Headers.parse(allocator, &buffer);
-
-    var server = headers.get("server").?.value;
-    var contentLength = headers.get("content-length").?.value;
-
-    testing.expect(std.mem.eql(u8, server, "Apache"));
-    testing.expect(std.mem.eql(u8, contentLength, "51"));
+    testing.expect(std.mem.eql(u8, headers.at(0).name, "server"));
+    testing.expect(std.mem.eql(u8, headers.at(0).value, "Apache"));
+    testing.expect(std.mem.eql(u8, headers.at(1).name, "content-length"));
+    testing.expect(std.mem.eql(u8, headers.at(1).value, "51"));
 }
