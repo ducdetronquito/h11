@@ -1,4 +1,5 @@
-pub const EventError = error {
+pub const EventError = error{
+    LocalProtocolError,
     NeedData,
-    RemoteProtocolError
+    RemoteProtocolError,
 };
