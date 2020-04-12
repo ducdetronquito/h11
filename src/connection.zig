@@ -1,25 +1,24 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Buffer = @import("buffer.zig").Buffer;
+const ClientAutomaton = @import("automatons/client.zig").ClientAutomaton;
 const Event = @import("automatons/events.zig").Event;
-const EventTag = @import("automatons/events.zig").EventTag;
+const HeaderField = @import("automatons/parsers/headers.zig").HeaderField;
 const ServerAutomaton = @import("automatons/server.zig").ServerAutomaton;
 
-
-pub const ConnectionError = error {
-    OutOfMemory,
-};
-
+pub const ConnectionError = error{OutOfMemory};
 
 pub const Connection = struct {
     allocator: *Allocator,
     buffer: Buffer,
     server: ServerAutomaton,
+    client: ClientAutomaton,
 
     pub fn init(allocator: *Allocator) Connection {
         var buffer = Buffer.init(allocator);
+        var client = ClientAutomaton.init(allocator);
         var server = ServerAutomaton.init(allocator);
-        return Connection{ .allocator = allocator, .buffer = buffer, .server = server };
+        return Connection{ .allocator = allocator, .buffer = buffer, .client = client, .server = server };
     }
 
     pub fn deinit(self: *Connection) void {
@@ -34,8 +33,11 @@ pub const Connection = struct {
     pub fn nextEvent(self: *Connection) !Event {
         return self.server.nextEvent(&self.buffer);
     }
-};
 
+    pub fn send(self: *Connection, event: Event) ![]const u8 {
+        return self.client.send(event);
+    }
+};
 
 const testing = std.testing;
 

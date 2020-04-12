@@ -95,6 +95,16 @@ pub const Headers = struct {
     fn isLinearWhitespace(char: u8) bool {
         return char == ' ' or char == '\t';
     }
+
+    pub fn serialize(buffer: *ArrayList(u8), headers: []HeaderField) !void {
+        for (headers) |header| {
+            try buffer.appendSlice(header.name);
+            try buffer.appendSlice(": ");
+            try buffer.appendSlice(header.value);
+            try buffer.appendSlice("\r\n");
+        }
+        try buffer.appendSlice("\r\n");
+    }
 };
 
 const testing = std.testing;
@@ -162,4 +172,18 @@ test "Parse" {
     testing.expect(std.mem.eql(u8, headers.at(0).value, "Apache"));
     testing.expect(std.mem.eql(u8, headers.at(1).name, "content-length"));
     testing.expect(std.mem.eql(u8, headers.at(1).value, "51"));
+}
+
+test "Serialize" {
+    var memory: [1024]u8 = undefined;
+    const allocator = &std.heap.FixedBufferAllocator.init(&memory).allocator;
+    var headers = [_]HeaderField{
+        HeaderField{ .name = "Host", .value = "httpbin.org" },
+        HeaderField{ .name = "Server", .value = "Apache" },
+    };
+
+    var buffer = ArrayList(u8).init(allocator);
+
+    try Headers.serialize(&buffer, headers[0..]);
+    testing.expect(std.mem.eql(u8, buffer.toSliceConst(), "Host: httpbin.org\r\nServer: Apache\r\n\r\n"));
 }
