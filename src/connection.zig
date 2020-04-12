@@ -1,10 +1,9 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Buffer = @import("buffer.zig").Buffer;
-const ClientAutomaton = @import("automatons/client.zig").ClientAutomaton;
-const Event = @import("automatons/events.zig").Event;
-const HeaderField = @import("automatons/parsers/headers.zig").HeaderField;
-const ServerAutomaton = @import("automatons/server.zig").ServerAutomaton;
+const ClientAutomaton = @import("client.zig").ClientAutomaton;
+const Event = @import("events.zig").Event;
+const ServerAutomaton = @import("server.zig").ServerAutomaton;
 
 pub const ConnectionError = error{OutOfMemory};
 

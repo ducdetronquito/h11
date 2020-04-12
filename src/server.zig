@@ -1,15 +1,11 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const Body = @import("parsers/body.zig").Body;
-const Buffer = @import("../buffer.zig").Buffer;
+const Buffer = @import("buffer.zig").Buffer;
 const Data = @import("events.zig").Data;
 const Event = @import("events.zig").Event;
-const EventError = @import("errors.zig").EventError;
 const EventTag = @import("events.zig").EventTag;
 const Response = @import("events.zig").Response;
-const Headers = @import("parsers/headers.zig").Headers;
 const State = @import("states.zig").State;
-const StatusLine = @import("parsers/status_line.zig").StatusLine;
 
 pub const ServerAutomaton = struct {
     allocator: *Allocator,
@@ -35,30 +31,15 @@ pub const ServerAutomaton = struct {
     }
 
     fn nextEventWhenIdle(self: *ServerAutomaton, buffer: *Buffer) !Event {
-        var statusLine = try StatusLine.parse(buffer);
-        var headers = try Headers.parse(self.allocator, buffer);
-        errdefer headers.deinit();
-
-        var rawContentLength: []const u8 = "0";
-        for (headers.toSliceConst()) |header| {
-            if (std.mem.eql(u8, header.name, "content-length")) {
-                rawContentLength = header.value;
-            }
-        }
-
-        const contentLength = std.fmt.parseInt(usize, rawContentLength, 10) catch {
-            return EventError.RemoteProtocolError;
-        };
-
-        self.contentLength = contentLength;
-
-        return Event{ .Response = Response{ .statusCode = statusLine.statusCode, .headers = headers } };
+        var response = try Response.parse(buffer, self.allocator);
+        self.contentLength = try response.getContentLength();
+        return Event{ .Response = response };
     }
 
     fn nextEventWhenSendingBody(self: *ServerAutomaton, buffer: *Buffer) !Event {
         if (!buffer.isEmpty()) {
-            var body = try Body.parse(buffer, self.contentLength);
-            return Event{ .Data = Data{ .body = body } };
+            var data = try Data.parse(buffer, self.contentLength);
+            return Event{ .Data = data };
         }
 
         return Event{ .EndOfMessage = undefined };
