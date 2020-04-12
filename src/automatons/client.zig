@@ -1,11 +1,14 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const ArrayList = std.ArrayList;
 const Data = @import("events.zig").Data;
 const Event = @import("events.zig").Event;
 const EventError = @import("errors.zig").EventError;
 const EventTag = @import("events.zig").EventTag;
+const Headers = @import("parsers/headers.zig").Headers;
 const HeaderField = @import("parsers/headers.zig").HeaderField;
 const Request = @import("events.zig").Request;
+const RequestLine = @import("parsers/request_line.zig").RequestLine;
 const State = @import("states.zig").State;
 
 pub const ClientAutomaton = struct {
@@ -29,9 +32,14 @@ pub const ClientAutomaton = struct {
 
     fn sendWhenIdle(self: *ClientAutomaton, event: Event) ![]const u8 {
         return switch (event) {
-            EventTag.Request => {
+            EventTag.Request => |request| {
+                var buffer = ArrayList(u8).init(self.allocator);
+                try RequestLine.serialize(&buffer, request.method, request.target);
+                try Headers.serialize(&buffer, request.headers);
+
                 self.state = State.SendBody;
-                return "Request Line";
+
+                return buffer.toOwnedSlice();
             },
             else => {
                 self.state = State.Error;
@@ -67,7 +75,8 @@ test "Send - When Idle - Can send a Request event" {
     var request = Request{ .method = "GET", .target = "/xml", .headers = headers[0..] };
 
     var bytesToSend = try client.send(Event{ .Request = request });
-    testing.expect(std.mem.eql(u8, bytesToSend, "Request Line"));
+    defer allocator.free(bytesToSend);
+    testing.expect(std.mem.eql(u8, bytesToSend, "GET /xml HTTP/1.1\r\nHost: httpbin.org\r\n\r\n"));
 }
 
 test "Send - When Idle - Returns a LocalProtocolError on any non-Request event" {
