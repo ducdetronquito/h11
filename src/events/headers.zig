@@ -11,8 +11,8 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
-const Buffer = @import("../../buffer.zig").Buffer;
-const EventError = @import("../errors.zig").EventError;
+const Buffer = @import("../buffer.zig").Buffer;
+const EventError = @import("errors.zig").EventError;
 
 pub const HeaderField = struct {
     pub name: []const u8,
@@ -96,7 +96,9 @@ pub const Headers = struct {
         return char == ' ' or char == '\t';
     }
 
-    pub fn serialize(buffer: *ArrayList(u8), headers: []HeaderField) !void {
+    pub fn serialize(allocator: *Allocator, headers: []HeaderField) ![]const u8 {
+        var buffer = ArrayList(u8).init(allocator);
+
         for (headers) |header| {
             try buffer.appendSlice(header.name);
             try buffer.appendSlice(": ");
@@ -104,12 +106,14 @@ pub const Headers = struct {
             try buffer.appendSlice("\r\n");
         }
         try buffer.appendSlice("\r\n");
+
+        return buffer.toOwnedSlice();
     }
 };
 
 const testing = std.testing;
 
-test "Parse field name - When ends with a whitespace - Returns error RemoteProtocolError" {
+test "Parse field name - When ends with a whitespace - Returns RemoteProtocolError" {
     var memory: [1024]u8 = undefined;
     const allocator = &std.heap.FixedBufferAllocator.init(&memory).allocator;
 
@@ -140,7 +144,7 @@ test "Parse field value - Ignore leading htab character" {
     testing.expect(std.mem.eql(u8, value, "Apache"));
 }
 
-test "Parse header field - When colon is missing - Returns error RemoteProtocolError" {
+test "Parse header field - When colon is missing - Returns RemoteProtocolError" {
     var memory: [1024]u8 = undefined;
     const allocator = &std.heap.FixedBufferAllocator.init(&memory).allocator;
 
@@ -148,7 +152,7 @@ test "Parse header field - When colon is missing - Returns error RemoteProtocolE
     testing.expectError(EventError.RemoteProtocolError, headerField);
 }
 
-test "Parse - When the headers does not end with an empty line - Returns error NeedData" {
+test "Parse - When the headers does not end with an empty line - Returns NeedData" {
     var memory: [1024]u8 = undefined;
     const allocator = &std.heap.FixedBufferAllocator.init(&memory).allocator;
 
@@ -182,8 +186,8 @@ test "Serialize" {
         HeaderField{ .name = "Server", .value = "Apache" },
     };
 
-    var buffer = ArrayList(u8).init(allocator);
+    var result = try Headers.serialize(allocator, headers[0..]);
+    defer allocator.free(result);
 
-    try Headers.serialize(&buffer, headers[0..]);
-    testing.expect(std.mem.eql(u8, buffer.toSliceConst(), "Host: httpbin.org\r\nServer: Apache\r\n\r\n"));
+    testing.expect(std.mem.eql(u8, result, "Host: httpbin.org\r\nServer: Apache\r\n\r\n"));
 }
