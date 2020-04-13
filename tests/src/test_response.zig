@@ -32,13 +32,13 @@ fn process_response_event(content: []const u8) !void {
     var memory: [1024]u8 = undefined;
     const allocator = &std.heap.FixedBufferAllocator.init(&memory).allocator;
 
-    var connection = h11.Connection.init(allocator);
-    defer connection.deinit();
+    var client = h11.Client.init(allocator);
+    defer client.deinit();
 
-    try connection.receiveData(content);
+    try client.receiveData(content);
 
     while (true) {
-        var event = try connection.nextEvent();
+        var event = try client.nextEvent();
         switch(event) {
             h11.EventTag.Response => |response| response.deinit(),
             h11.EventTag.EndOfMessage => break,
