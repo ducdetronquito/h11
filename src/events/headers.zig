@@ -20,7 +20,7 @@ pub const HeaderField = struct {
 };
 
 pub const Headers = struct {
-    pub fn parse(allocator: *Allocator, buffer: *Buffer) !ArrayList(HeaderField) {
+    pub fn parse(allocator: *Allocator, buffer: *Buffer) ![]HeaderField {
         var fields = ArrayList(HeaderField).init(allocator);
         errdefer fields.deinit();
 
@@ -34,7 +34,7 @@ pub const Headers = struct {
             try fields.append(field);
         }
 
-        return fields;
+        return fields.toOwnedSlice();
     }
 
     pub fn parseHeaderField(allocator: *Allocator, data: []const u8) !HeaderField {
@@ -170,12 +170,12 @@ test "Parse" {
     var buffer = Buffer.init(allocator);
     try buffer.append("server: Apache\r\ncontent-length: 51\r\n\r\n");
     var headers = try Headers.parse(allocator, &buffer);
-    defer headers.deinit();
+    defer allocator.free(headers);
 
-    testing.expect(std.mem.eql(u8, headers.at(0).name, "server"));
-    testing.expect(std.mem.eql(u8, headers.at(0).value, "Apache"));
-    testing.expect(std.mem.eql(u8, headers.at(1).name, "content-length"));
-    testing.expect(std.mem.eql(u8, headers.at(1).value, "51"));
+    testing.expect(std.mem.eql(u8, headers[0].name, "server"));
+    testing.expect(std.mem.eql(u8, headers[0].value, "Apache"));
+    testing.expect(std.mem.eql(u8, headers[1].name, "content-length"));
+    testing.expect(std.mem.eql(u8, headers[1].value, "51"));
 }
 
 test "Serialize" {

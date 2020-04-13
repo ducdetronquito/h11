@@ -1,8 +1,9 @@
-usingnamespace @import("events/errors.zig");
-usingnamespace @import("events/data.zig");
-usingnamespace @import("events/headers.zig");
-usingnamespace @import("events/request.zig");
-usingnamespace @import("events/response.zig");
+pub const EventError = @import("events/errors.zig").EventError;
+pub const Data = @import("events/data.zig").Data;
+pub const HeaderField = @import("events/headers.zig").HeaderField;
+pub const Headers = @import("events/headers.zig").Headers;
+pub const Request = @import("events/request.zig").Request;
+pub const Response = @import("events/response.zig").Response;
 
 pub const EventTag = enum {
     ConnectionClosed,

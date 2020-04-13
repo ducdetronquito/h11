@@ -3,6 +3,8 @@ const Allocator = std.mem.Allocator;
 const Buffer = @import("buffer.zig").Buffer;
 const ClientAutomaton = @import("client.zig").ClientAutomaton;
 const Event = @import("events.zig").Event;
+const HeaderField = @import("events.zig").HeaderField;
+const Request = @import("events.zig").Request;
 const ServerAutomaton = @import("server.zig").ServerAutomaton;
 
 fn Connection(comptime L: type, comptime R: type) type {
@@ -42,7 +44,7 @@ pub const Client = Connection(ClientAutomaton, ServerAutomaton);
 
 const testing = std.testing;
 
-test "Init and deinit" {
+test "Client - Init and deinit" {
     var buffer: [10]u8 = undefined;
     const allocator = &std.heap.FixedBufferAllocator.init(&buffer).allocator;
 
@@ -50,7 +52,7 @@ test "Init and deinit" {
     defer client.deinit();
 }
 
-test "Receive data" {
+test "Client - Receive data" {
     var buffer: [10]u8 = undefined;
     const allocator = &std.heap.FixedBufferAllocator.init(&buffer).allocator;
 
@@ -61,7 +63,7 @@ test "Receive data" {
     try client.receiveData(data);
 }
 
-test "Receive data - Out of memory" {
+test "Client - Receive data - Out of memory" {
     var buffer: [10]u8 = undefined;
     const allocator = &std.heap.FixedBufferAllocator.init(&buffer).allocator;
 

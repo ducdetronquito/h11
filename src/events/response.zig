@@ -11,20 +11,25 @@ pub const StatusLine = struct {
 };
 
 pub const Response = struct {
+    allocator: *Allocator,
     pub statusCode: i32,
-    pub headers: ArrayList(HeaderField),
+    pub headers: []HeaderField,
 
-    pub fn deinit(self: *const Response) void {
-        self.headers.deinit();
+
+    pub fn init(allocator: *Allocator, statusCode: i32, headers: []HeaderField) Response {
+        return Response{ .allocator = allocator, .statusCode = statusCode, .headers = headers };
+    }
+
+    pub fn deinit(self: *Response) void {
+        self.allocator.free(self.headers);
     }
 
     pub fn parse(buffer: *Buffer, allocator: *Allocator) !Response {
         var statusLine = try Response.parseStatusLine(buffer);
 
         var headers = try Headers.parse(allocator, buffer);
-        errdefer headers.deinit();
 
-        return Response{ .statusCode = statusLine.statusCode, .headers = headers };
+        return Response.init(allocator, statusLine.statusCode, headers);
     }
 
     pub fn parseStatusLine(buffer: *Buffer) !StatusLine {
@@ -48,7 +53,7 @@ pub const Response = struct {
         // TODO: At some point we may want to verify that the content-length value
         // is a valid unsigned integer when parsing the headers.
         var rawContentLength: []const u8 = "0";
-        for (self.headers.toSliceConst()) |header| {
+        for (self.headers) |header| {
             if (std.mem.eql(u8, header.name, "content-length")) {
                 rawContentLength = header.value;
             }
@@ -117,6 +122,8 @@ test "Parse" {
     try buffer.append("HTTP/1.1 200 OK\r\nServer: Apache\r\nContent-Length: 12\r\n\r\n");
 
     var response = try Response.parse(&buffer, allocator);
+    defer response.deinit();
+
     testing.expect(response.statusCode == 200);
     testing.expect(response.headers.len == 2);
 }
@@ -125,9 +132,9 @@ test "Get Content Length" {
     var memory: [1024]u8 = undefined;
     const allocator = &std.heap.FixedBufferAllocator.init(&memory).allocator;
 
-    var headers = ArrayList(HeaderField).init(allocator);
-    try headers.append(HeaderField{ .name = "content-length", .value = "12" });
-    var response = Response{ .statusCode = 200, .headers = headers };
+    var headers = [_]HeaderField{ HeaderField{ .name = "content-length", .value = "12" } };
+    var response = Response.init(allocator, 200, headers[0..]);
+    defer response.deinit();
 
     var contentLength: usize = try response.getContentLength();
     testing.expect(contentLength == 12);
@@ -137,9 +144,9 @@ test "Get Content Length - When value is not a integer - Returns RemoteProtocolE
     var memory: [1024]u8 = undefined;
     const allocator = &std.heap.FixedBufferAllocator.init(&memory).allocator;
 
-    var headers = ArrayList(HeaderField).init(allocator);
-    try headers.append(HeaderField{ .name = "content-length", .value = "XXX" });
-    var response = Response{ .statusCode = 200, .headers = headers };
+    var headers = [_]HeaderField{ HeaderField{ .name = "content-length", .value = "XXX" } };
+    var response = Response.init(allocator, 200, headers[0..]);
+    defer response.deinit();
 
     testing.expectError(EventError.RemoteProtocolError, response.getContentLength());
 }
