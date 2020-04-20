@@ -123,20 +123,27 @@ test "Parse" {
 }
 
 test "Get Content Length" {
-    var fields = [_]HeaderField{ HeaderField{ .name = "content-length", .value = "12" } };
-    var headers = Headers.fromOwnedFields(testing.allocator, fields[0..]);
+    var fields = ArrayList(HeaderField).init(testing.allocator);
+    defer fields.deinit();
+    try fields.append(HeaderField{ .name = "content-length", .value = "12" });
+    var headers = Headers.init(testing.allocator, fields.toOwnedSlice());
     var response = Response.init(testing.allocator, 200, headers);
     defer response.deinit();
 
-    var contentLength: usize = try response.getContentLength();
+    var contentLength = try response.getContentLength();
+
     testing.expect(contentLength == 12);
 }
 
 test "Get Content Length - When value is not a integer - Returns RemoteProtocolError" {
-    var fields = [_]HeaderField{ HeaderField{ .name = "content-length", .value = "XXX" } };
-    var headers = Headers.fromOwnedFields(testing.allocator, fields[0..]);
+    var fields = ArrayList(HeaderField).init(testing.allocator);
+    defer fields.deinit();
+    try fields.append(HeaderField{ .name = "content-length", .value = "XXX" });
+    var headers = Headers.init(testing.allocator, fields.toOwnedSlice());
     var response = Response.init(testing.allocator, 200, headers);
     defer response.deinit();
 
-    testing.expectError(EventError.RemoteProtocolError, response.getContentLength());
+    var contentLength = response.getContentLength();
+
+    testing.expectError(EventError.RemoteProtocolError, contentLength);
 }
