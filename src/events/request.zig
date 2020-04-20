@@ -14,9 +14,12 @@ pub const Request = struct {
         var buffer = ArrayList(u8).init(allocator);
 
         var requestLine = try self.serializeRequestLine(allocator);
+        defer allocator.free(requestLine);
         try buffer.appendSlice(requestLine);
 
         var headers = try Headers.serialize(allocator, self.headers);
+        defer allocator.free(headers);
+
         try buffer.appendSlice(headers);
 
         return buffer.toOwnedSlice();
@@ -36,14 +39,11 @@ pub const Request = struct {
 const testing = std.testing;
 
 test "Serialize" {
-    var buffer: [1024]u8 = undefined;
-    const allocator = &std.heap.FixedBufferAllocator.init(&buffer).allocator;
-
     var headers = [_]HeaderField{HeaderField{ .name = "Host", .value = "httpbin.org" }};
     var request = Request{ .method = "GET", .target = "/xml", .headers = headers[0..] };
 
-    var result = try request.serialize(allocator);
-    defer allocator.free(result);
+    var result = try request.serialize(testing.allocator);
+    defer testing.allocator.free(result);
 
     testing.expect(std.mem.eql(u8, result, "GET /xml HTTP/1.1\r\nHost: httpbin.org\r\n\r\n"));
 }

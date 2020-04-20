@@ -3,7 +3,7 @@ const Buffer = @import("../buffer.zig").Buffer;
 const EventError = @import("errors.zig").EventError;
 
 pub const Data = struct {
-    pub body: []const u8,
+    body: []const u8,
 
     pub fn deinit(self: *Data) void {
         // TODO: Data needs to own its payload
@@ -25,10 +25,8 @@ pub const Data = struct {
 const testing = std.testing;
 
 test "Parse - When the payload is not completely received - Returns NeedData" {
-    var memory: [1024]u8 = undefined;
-    const allocator = &std.heap.FixedBufferAllocator.init(&memory).allocator;
-
-    var buffer = Buffer.init(allocator);
+    var buffer = Buffer.init(testing.allocator);
+    defer buffer.deinit();
     try buffer.append("Hello World!");
 
     var data = Data.parse(&buffer, 666);
@@ -37,10 +35,8 @@ test "Parse - When the payload is not completely received - Returns NeedData" {
 }
 
 test "Parse - Larger payload than expected - Returns RemoteProtocolError" {
-    var memory: [1024]u8 = undefined;
-    const allocator = &std.heap.FixedBufferAllocator.init(&memory).allocator;
-
-    var buffer = Buffer.init(allocator);
+    var buffer = Buffer.init(testing.allocator);
+    defer buffer.deinit();
     try buffer.append("Hello World!");
     var data = Data.parse(&buffer, 10);
 
@@ -48,10 +44,8 @@ test "Parse - Larger payload than expected - Returns RemoteProtocolError" {
 }
 
 test "Parse - Success" {
-    var memory: [1024]u8 = undefined;
-    const allocator = &std.heap.FixedBufferAllocator.init(&memory).allocator;
-
-    var buffer = Buffer.init(allocator);
+    var buffer = Buffer.init(testing.allocator);
+    defer buffer.deinit();
     try buffer.append("Hello World!");
     var data = try Data.parse(&buffer, 12);
 
