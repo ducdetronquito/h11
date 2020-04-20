@@ -63,9 +63,7 @@ pub const Buffer = struct {
     }
 
     pub fn append(self: *Buffer, slice: []const u8) !void {
-        const old_len = self.data.items.len;
-        try self.data.resize(old_len + slice.len);
-        std.mem.copy(u8, self.data.items[old_len..], slice);
+        try self.data.appendSlice(slice);
     }
 };
 
