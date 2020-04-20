@@ -24,7 +24,7 @@ pub const Buffer = struct {
 
     /// Read one line from the stream.
     /// Returns an empty line if CRLF is not found.
-    pub fn readLine(self: *Buffer) ![]const u8 {
+    pub fn readLine(self: *Buffer) ![]u8 {
         const data = self.data.items;
         var start = self.cursor;
         var cursor = self.cursor;
@@ -47,7 +47,7 @@ pub const Buffer = struct {
         }
     }
 
-    pub fn read(self: *Buffer, size: usize) []const u8 {
+    pub fn read(self: *Buffer, size: usize) []u8 {
         const end = std.math.min(size, self.len());
         const result = self.data.items[self.cursor..self.cursor + end];
         self.cursor += size;
