@@ -25,7 +25,7 @@ pub const Buffer = struct {
     /// Read one line from the stream.
     /// Returns an empty line if CRLF is not found.
     pub fn readLine(self: *Buffer) ![]const u8 {
-        const data = self.data.toSliceConst();
+        const data = self.data.items;
         var start = self.cursor;
         var cursor = self.cursor;
 
@@ -49,13 +49,13 @@ pub const Buffer = struct {
 
     pub fn read(self: *Buffer, size: usize) []const u8 {
         const end = std.math.min(size, self.len());
-        const result = self.data.toSliceConst()[self.cursor..self.cursor + end];
+        const result = self.data.items[self.cursor..self.cursor + end];
         self.cursor += size;
         return result;
     }
 
     pub fn len(self: *Buffer) usize {
-        return self.data.len - self.cursor;
+        return self.data.items.len - self.cursor;
     }
 
     pub fn isEmpty(self: *Buffer) bool {
@@ -63,9 +63,9 @@ pub const Buffer = struct {
     }
 
     pub fn append(self: *Buffer, slice: []const u8) !void {
-        const old_len = self.data.len;
+        const old_len = self.data.items.len;
         try self.data.resize(old_len + slice.len);
-        std.mem.copy(u8, self.data.toSlice()[old_len..], slice);
+        std.mem.copy(u8, self.data.items[old_len..], slice);
     }
 };
 
@@ -73,56 +73,44 @@ pub const Buffer = struct {
 const testing = std.testing;
 
 test "Init and deinit" {
-    var memory: [1024]u8 = undefined;
-    const allocator = &std.heap.FixedBufferAllocator.init(&memory).allocator;
-
-    var buffer = Buffer.init(allocator);
+    var buffer = Buffer.init(testing.allocator);
     defer buffer.deinit();
 }
 
 
 test "ReadLine - No CRLF - Returns EndOfStream" {
-    var memory: [1024]u8 = undefined;
-    const allocator = &std.heap.FixedBufferAllocator.init(&memory).allocator;
-
-    var buffer = Buffer.init(allocator);
+    var buffer = Buffer.init(testing.allocator);
     defer buffer.deinit();
     try buffer.append("HTTP/1.1 200 OK");
 
     var line = buffer.readLine();
+
     testing.expectError(BufferError.EndOfStream, line);
 }
 
 test "ReadLine - Read line returns the entire buffer" {
-    var memory: [1024]u8 = undefined;
-    const allocator = &std.heap.FixedBufferAllocator.init(&memory).allocator;
-
-    var buffer = Buffer.init(allocator);
+    var buffer = Buffer.init(testing.allocator);
     defer buffer.deinit();
     try buffer.append("HTTP/1.1 200 OK\r\n");
 
     var line = try buffer.readLine();
+
     testing.expect(std.mem.eql(u8, line, "HTTP/1.1 200 OK"));
 }
 
 test "ReadLine - Read line returns the remaining buffer" {
-    var memory: [1024]u8 = undefined;
-    const allocator = &std.heap.FixedBufferAllocator.init(&memory).allocator;
-
-    var buffer = Buffer.init(allocator);
+    var buffer = Buffer.init(testing.allocator);
     defer buffer.deinit();
     try buffer.append("HTTP/1.1 200 OK\r\n");
     _ = buffer.read(9);
 
     var line = try buffer.readLine();
+
     testing.expect(std.mem.eql(u8, line, "200 OK"));
 }
 
 test "ReadLine - Read lines one by one " {
-    var memory: [1024]u8 = undefined;
-    const allocator = &std.heap.FixedBufferAllocator.init(&memory).allocator;
-
-    var buffer = Buffer.init(allocator);
+    var buffer = Buffer.init(testing.allocator);
     defer buffer.deinit();
     try buffer.append("HTTP/1.1 200 OK\r\nServer: Apache\r\nContent-Length: 51\r\n");
 
@@ -136,10 +124,7 @@ test "ReadLine - Read lines one by one " {
 }
 
 test "Read - Success " {
-    var memory: [1024]u8 = undefined;
-    const allocator = &std.heap.FixedBufferAllocator.init(&memory).allocator;
-
-    var buffer = Buffer.init(allocator);
+    var buffer = Buffer.init(testing.allocator);
     defer buffer.deinit();
     try buffer.append("HTTP/1.1 200 OK");
 

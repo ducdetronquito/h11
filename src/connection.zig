@@ -45,18 +45,12 @@ pub const Client = Connection(ClientAutomaton, ServerAutomaton);
 const testing = std.testing;
 
 test "Client - Init and deinit" {
-    var buffer: [10]u8 = undefined;
-    const allocator = &std.heap.FixedBufferAllocator.init(&buffer).allocator;
-
-    var client = Client.init(allocator);
+    var client = Client.init(testing.allocator);
     defer client.deinit();
 }
 
 test "Client - Receive data" {
-    var buffer: [10]u8 = undefined;
-    const allocator = &std.heap.FixedBufferAllocator.init(&buffer).allocator;
-
-    var client = Client.init(allocator);
+    var client = Client.init(testing.allocator);
     defer client.deinit();
 
     var data = "Hello";

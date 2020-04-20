@@ -7,21 +7,21 @@ const Headers = @import("headers.zig").Headers;
 const HeaderField = @import("headers.zig").HeaderField;
 
 pub const StatusLine = struct {
-    pub statusCode: i32,
+    statusCode: i32,
 };
 
 pub const Response = struct {
     allocator: *Allocator,
-    pub statusCode: i32,
-    pub headers: []HeaderField,
+    statusCode: i32,
+    headers: Headers,
 
 
-    pub fn init(allocator: *Allocator, statusCode: i32, headers: []HeaderField) Response {
+    pub fn init(allocator: *Allocator, statusCode: i32, headers: Headers) Response {
         return Response{ .allocator = allocator, .statusCode = statusCode, .headers = headers };
     }
 
     pub fn deinit(self: *Response) void {
-        self.allocator.free(self.headers);
+        self.headers.deinit();
     }
 
     pub fn parse(buffer: *Buffer, allocator: *Allocator) !Response {
@@ -53,9 +53,9 @@ pub const Response = struct {
         // TODO: At some point we may want to verify that the content-length value
         // is a valid unsigned integer when parsing the headers.
         var rawContentLength: []const u8 = "0";
-        for (self.headers) |header| {
-            if (std.mem.eql(u8, header.name, "content-length")) {
-                rawContentLength = header.value;
+        for (self.headers.fields) |field| {
+            if (std.mem.eql(u8, field.name, "content-length")) {
+                rawContentLength = field.value;
             }
         }
 
@@ -70,44 +70,40 @@ pub const Response = struct {
 const testing = std.testing;
 
 test "Parse Status Line- When the status line does not end with a CRLF - Returns NeedData" {
-    var memory: [1024]u8 = undefined;
-    const allocator = &std.heap.FixedBufferAllocator.init(&memory).allocator;
-
-    var buffer = Buffer.init(allocator);
+    var buffer = Buffer.init(testing.allocator);
+    defer buffer.deinit();
     try buffer.append("HTTP/1.1 200 OK");
+
     var statusLine = Response.parseStatusLine(&buffer);
 
     testing.expectError(EventError.NeedData, statusLine);
 }
 
 test "Parse Status Line - When the http version is not HTTP/1.1 - Returns RemoteProtocolError" {
-    var memory: [1024]u8 = undefined;
-    const allocator = &std.heap.FixedBufferAllocator.init(&memory).allocator;
-
-    var buffer = Buffer.init(allocator);
+    var buffer = Buffer.init(testing.allocator);
+    defer buffer.deinit();
     try buffer.append("HTTP/2.0 200 OK\r\n");
+
     var statusLine = Response.parseStatusLine(&buffer);
 
     testing.expectError(EventError.RemoteProtocolError, statusLine);
 }
 
 test "Parse Status Line - When the status code is not made of 3 digits - Returns RemoteProtocolError" {
-    var memory: [1024]u8 = undefined;
-    const allocator = &std.heap.FixedBufferAllocator.init(&memory).allocator;
-
-    var buffer = Buffer.init(allocator);
+    var buffer = Buffer.init(testing.allocator);
+    defer buffer.deinit();
     try buffer.append("HTTP/1.1 20x OK\r\n");
+
     var statusLine = Response.parseStatusLine(&buffer);
 
     testing.expectError(EventError.RemoteProtocolError, statusLine);
 }
 
 test "Parse Status Line" {
-    var memory: [1024]u8 = undefined;
-    const allocator = &std.heap.FixedBufferAllocator.init(&memory).allocator;
-
-    var buffer = Buffer.init(allocator);
+    var buffer = Buffer.init(testing.allocator);
+    defer buffer.deinit();
     try buffer.append("HTTP/1.1 405 Method Not Allowed\r\n");
+
     var statusLine = try Response.parseStatusLine(&buffer);
 
     testing.expect(statusLine.statusCode == 405);
@@ -115,25 +111,21 @@ test "Parse Status Line" {
 }
 
 test "Parse" {
-    var memory: [1024]u8 = undefined;
-    const allocator = &std.heap.FixedBufferAllocator.init(&memory).allocator;
-
-    var buffer = Buffer.init(allocator);
+    var buffer = Buffer.init(testing.allocator);
+    defer buffer.deinit();
     try buffer.append("HTTP/1.1 200 OK\r\nServer: Apache\r\nContent-Length: 12\r\n\r\n");
 
-    var response = try Response.parse(&buffer, allocator);
+    var response = try Response.parse(&buffer, testing.allocator);
     defer response.deinit();
 
     testing.expect(response.statusCode == 200);
-    testing.expect(response.headers.len == 2);
+    testing.expect(response.headers.fields.len == 2);
 }
 
 test "Get Content Length" {
-    var memory: [1024]u8 = undefined;
-    const allocator = &std.heap.FixedBufferAllocator.init(&memory).allocator;
-
-    var headers = [_]HeaderField{ HeaderField{ .name = "content-length", .value = "12" } };
-    var response = Response.init(allocator, 200, headers[0..]);
+    var fields = [_]HeaderField{ HeaderField{ .name = "content-length", .value = "12" } };
+    var headers = Headers.fromOwnedFields(testing.allocator, fields[0..]);
+    var response = Response.init(testing.allocator, 200, headers);
     defer response.deinit();
 
     var contentLength: usize = try response.getContentLength();
@@ -141,11 +133,9 @@ test "Get Content Length" {
 }
 
 test "Get Content Length - When value is not a integer - Returns RemoteProtocolError" {
-    var memory: [1024]u8 = undefined;
-    const allocator = &std.heap.FixedBufferAllocator.init(&memory).allocator;
-
-    var headers = [_]HeaderField{ HeaderField{ .name = "content-length", .value = "XXX" } };
-    var response = Response.init(allocator, 200, headers[0..]);
+    var fields = [_]HeaderField{ HeaderField{ .name = "content-length", .value = "XXX" } };
+    var headers = Headers.fromOwnedFields(testing.allocator, fields[0..]);
+    var response = Response.init(testing.allocator, 200, headers);
     defer response.deinit();
 
     testing.expectError(EventError.RemoteProtocolError, response.getContentLength());
