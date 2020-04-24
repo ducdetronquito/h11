@@ -2,7 +2,7 @@
 
 I/O free HTTP/1.1 implementation for Zig inspired by [hyper/h11](https://github.com/python-hyper/h11)
 
-[![Build Status](https://api.travis-ci.org/ducdetronquito/h11.svg?branch=master)](https://travis-ci.org/ducdetronquito/h11)[![License](https://img.shields.io/badge/license-public%20domain-ff69b4.svg)](https://github.com/ducdetronquito/h11#license)
+[![Build Status](https://api.travis-ci.org/ducdetronquito/h11.svg?branch=master)](https://travis-ci.org/ducdetronquito/h11) [![License](https://img.shields.io/badge/license-public%20domain-ff69b4.svg)](https://github.com/ducdetronquito/h11#license) [![Requirements](https://img.shields.io/badge/zig-0.6.0-orange)](https://ziglang.org/)
 
 ## Usage
 
@@ -18,6 +18,11 @@ You can find a basic HTTP client written with *h11* [here](https://github.com/du
 
 In the end, every concepts of *h11* are taken straight from the original implementation in python: [python-hyper/h11](https://github.com/python-hyper/h11).
 Furthermore, a really well written documentation is available [here](https://h11.readthedocs.io).
+
+## Requirements
+
+To work with *h11* you will need the latest stable version of Zig, which is currently Zig 0.6.0.
+
 
 ## License
 
