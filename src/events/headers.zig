@@ -23,8 +23,25 @@ pub const Headers = struct {
     allocator: *Allocator,
     fields: []HeaderField,
 
-    pub fn init(allocator: *Allocator, fields: []HeaderField) Headers {
+    pub fn init(allocator: *Allocator) Headers {
+        return Headers{ .allocator = allocator, .fields = &[_]HeaderField{} };
+    }
+
+    /// Headers takes ownership of the passed in slice. The slice must have been
+    /// allocated with `allocator`.
+    pub fn fromOwnedSlice(allocator: *Allocator, fields: []HeaderField) Headers {
         return Headers{ .allocator = allocator, .fields = fields };
+    }
+
+    pub fn deinit(self: *Headers) void {
+        self.allocator.free(self.fields);
+    }
+
+    /// The caller owns the returned memory. Headers becomes empty.
+    pub fn toOwnedSlice(self: *Headers) []HeaderField {
+        const result = self.allocator.shrink(self.fields, self.fields.len);
+        self.* = init(self.allocator);
+        return result;
     }
 
     pub fn parse(allocator: *Allocator, buffer: *Buffer) !Headers{
@@ -42,16 +59,7 @@ pub const Headers = struct {
             try fields.append(field);
         }
 
-        return Headers.init(allocator, fields.toOwnedSlice());
-    }
-
-    pub fn deinit(self: *Headers) void {
-        self.allocator.free(self.fields);
-    }
-
-    fn deinitFields(allocator: *Allocator, fields: []HeaderField) void {
-        for (fields) |*field| {
-        }
+        return Headers.fromOwnedSlice(allocator, fields.toOwnedSlice());
     }
 
     pub fn parseHeaderField(allocator: *Allocator, data: []u8) !HeaderField {
