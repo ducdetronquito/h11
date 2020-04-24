@@ -50,8 +50,6 @@ pub const Response = struct {
     }
 
     pub fn getContentLength(self: *Response) !usize {
-        // TODO: At some point we may want to verify that the content-length value
-        // is a valid unsigned integer when parsing the headers.
         var rawContentLength: []const u8 = "0";
         for (self.headers.fields) |field| {
             if (std.mem.eql(u8, field.name, "content-length")) {
@@ -126,7 +124,7 @@ test "Get Content Length" {
     var fields = ArrayList(HeaderField).init(testing.allocator);
     defer fields.deinit();
     try fields.append(HeaderField{ .name = "content-length", .value = "12" });
-    var headers = Headers.init(testing.allocator, fields.toOwnedSlice());
+    var headers = Headers.fromOwnedSlice(testing.allocator, fields.toOwnedSlice());
     var response = Response.init(testing.allocator, 200, headers);
     defer response.deinit();
 
@@ -139,7 +137,7 @@ test "Get Content Length - When value is not a integer - Returns RemoteProtocolE
     var fields = ArrayList(HeaderField).init(testing.allocator);
     defer fields.deinit();
     try fields.append(HeaderField{ .name = "content-length", .value = "XXX" });
-    var headers = Headers.init(testing.allocator, fields.toOwnedSlice());
+    var headers = Headers.fromOwnedSlice(testing.allocator, fields.toOwnedSlice());
     var response = Response.init(testing.allocator, 200, headers);
     defer response.deinit();
 

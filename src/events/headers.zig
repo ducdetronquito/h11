@@ -23,8 +23,25 @@ pub const Headers = struct {
     allocator: *Allocator,
     fields: []HeaderField,
 
-    pub fn init(allocator: *Allocator, fields: []HeaderField) Headers {
+    pub fn init(allocator: *Allocator) Headers {
+        return Headers{ .allocator = allocator, .fields = &[_]HeaderField{} };
+    }
+
+    /// Headers takes ownership of the passed in slice. The slice must have been
+    /// allocated with `allocator`.
+    pub fn fromOwnedSlice(allocator: *Allocator, fields: []HeaderField) Headers {
         return Headers{ .allocator = allocator, .fields = fields };
+    }
+
+    pub fn deinit(self: *Headers) void {
+        self.allocator.free(self.fields);
+    }
+
+    /// The caller owns the returned memory. Headers becomes empty.
+    pub fn toOwnedSlice(self: *Headers) []HeaderField {
+        const result = self.allocator.shrink(self.fields, self.fields.len);
+        self.* = init(self.allocator);
+        return result;
     }
 
     pub fn parse(allocator: *Allocator, buffer: *Buffer) !Headers{
@@ -38,28 +55,19 @@ pub const Headers = struct {
                 break;
             }
 
-            const field = try Headers.parseHeaderField(allocator, line);
+            const field = try Headers.parseHeaderField(line);
             try fields.append(field);
         }
 
-        return Headers.init(allocator, fields.toOwnedSlice());
+        return Headers.fromOwnedSlice(allocator, fields.toOwnedSlice());
     }
 
-    pub fn deinit(self: *Headers) void {
-        self.allocator.free(self.fields);
-    }
-
-    fn deinitFields(allocator: *Allocator, fields: []HeaderField) void {
-        for (fields) |*field| {
-        }
-    }
-
-    pub fn parseHeaderField(allocator: *Allocator, data: []u8) !HeaderField {
+    fn parseHeaderField(data: []u8) !HeaderField {
         var cursor: usize = 0;
         while (cursor < data.len) {
             if (data[cursor] == ':') {
-                const name = try Headers.parseFieldName(allocator, data[0..cursor]);
-                const value = Headers.parseFieldValue(allocator, data[cursor + 1 ..]);
+                const name = try Headers.parseFieldName(data[0..cursor]);
+                const value = Headers.parseFieldValue(data[cursor + 1 ..]);
                 return HeaderField{ .name = name, .value = value };
             }
             cursor += 1;
@@ -67,7 +75,7 @@ pub const Headers = struct {
         return EventError.RemoteProtocolError;
     }
 
-    pub fn parseFieldName(allocator: *Allocator, data: []u8) ![]u8 {
+    fn parseFieldName(data: []u8) ![]u8 {
         // No whitespace is allowed between the header field-name and colon.
         // Cf: https://tools.ietf.org/html/rfc7230#section-3.2.4
         if (data[data.len - 1] == ' ') {
@@ -80,7 +88,7 @@ pub const Headers = struct {
         return data;
     }
 
-    pub fn parseFieldValue(allocator: *Allocator, data: []const u8) []const u8 {
+    fn parseFieldValue(data: []const u8) []const u8 {
         // Leading and trailing whitespace are removed.
         // Cf: https://tools.ietf.org/html/rfc7230#section-3.2.4
         var cursor: usize = 0;
@@ -135,7 +143,7 @@ test "Parse field name - When ends with a whitespace - Returns RemoteProtocolErr
     var name = try allocate(testing.allocator, "Server ");
     defer testing.allocator.free(name);
 
-    var headers = Headers.parseFieldName(testing.allocator, name);
+    var headers = Headers.parseFieldName(name);
     testing.expectError(EventError.RemoteProtocolError, headers);
 }
 
@@ -143,25 +151,25 @@ test "Parse field name - Name is lowercased" {
     var name = try allocate(testing.allocator, "SeRvEr");
     defer testing.allocator.free(name);
 
-    var value = try Headers.parseFieldName(testing.allocator, name);
+    var value = try Headers.parseFieldName(name);
 
     testing.expect(std.mem.eql(u8, value, "server"));
 }
 
 test "Parse field value" {
-    var value = Headers.parseFieldValue(testing.allocator, "Apache");
+    var value = Headers.parseFieldValue("Apache");
 
     testing.expect(std.mem.eql(u8, value, "Apache"));
 }
 
 test "Parse field value - Ignore leading and trailing whitespace" {
-    var value = Headers.parseFieldValue(testing.allocator, " \t  Apache   \t ");
+    var value = Headers.parseFieldValue(" \t  Apache   \t ");
 
     testing.expect(std.mem.eql(u8, value, "Apache"));
 }
 
 test "Parse field value - Ignore leading htab character" {
-    var value = Headers.parseFieldValue(testing.allocator, "\tApache");
+    var value = Headers.parseFieldValue("\tApache");
 
     testing.expect(std.mem.eql(u8, value, "Apache"));
 }
@@ -170,7 +178,7 @@ test "Parse header field - When colon is missing - Returns RemoteProtocolError" 
     var field = try allocate(testing.allocator, "ServerApache");
     defer testing.allocator.free(field);
 
-    var headerField = Headers.parseHeaderField(testing.allocator, field);
+    var headerField = Headers.parseHeaderField(field);
 
     testing.expectError(EventError.RemoteProtocolError, headerField);
 }

@@ -91,7 +91,6 @@ test "Client - Send Get request and read response." {
     event = try client.nextEvent();
     switch (event) {
         h11.EventTag.Data => |*data| {
-            defer data.deinit();
             testing.expect(std.mem.eql(u8, data.body, responseDataBytes));
         },
         else => unreachable,

@@ -25,7 +25,6 @@ fn Connection(comptime L: type, comptime R: type) type {
             self.buffer.deinit();
         }
 
-        /// Add data to the connection internal buffer.
         pub fn receiveData(self: *Connection(L, R), data: []const u8) !void {
             try self.buffer.append(data);
         }

@@ -18,14 +18,16 @@ pub const ServerAutomaton = struct {
 
     pub fn nextEvent(self: *ServerAutomaton, buffer: *Buffer) !Event {
         var event: Event = undefined;
-        if (self.state == State.Idle) {
-            event = try self.nextEventWhenIdle(buffer);
-        } else if (self.state == State.SendBody) {
-            event = try self.nextEventWhenSendingBody(buffer);
-        } else {
-            self.state = State.Error;
-            event = Event{ .ConnectionClosed = undefined };
+        switch(self.state) {
+            State.Idle => event = try self.nextEventWhenIdle(buffer),
+            State.SendBody => event = try self.nextEventWhenSendingBody(buffer),
+            State.Done => event = self.nextEventWhenDone(buffer),
+            else => {
+                self.state = State.Error;
+                event = Event{ .ConnectionClosed = undefined };
+            }
         }
+
         self.changeState(event);
         return event;
     }
@@ -37,11 +39,11 @@ pub const ServerAutomaton = struct {
     }
 
     fn nextEventWhenSendingBody(self: *ServerAutomaton, buffer: *Buffer) !Event {
-        if (!buffer.isEmpty()) {
-            var data = try Data.parse(buffer, self.contentLength);
-            return Event{ .Data = data };
-        }
+        var data = try Data.parse(buffer, self.contentLength);
+        return Event{ .Data = data };
+    }
 
+    fn nextEventWhenDone(self: *ServerAutomaton, buffer: *Buffer) Event {
         return Event{ .EndOfMessage = undefined };
     }
 
@@ -56,8 +58,7 @@ pub const ServerAutomaton = struct {
             },
             State.SendBody => {
                 switch (event) {
-                    EventTag.Data => self.state = State.SendBody,
-                    EventTag.EndOfMessage => self.state = State.Done,
+                    EventTag.Data => self.state = State.Done,
                     else => self.state = State.Error,
                 }
             },

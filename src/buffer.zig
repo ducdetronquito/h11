@@ -22,8 +22,14 @@ pub const Buffer = struct {
         self.data.deinit();
     }
 
-    /// Read one line from the stream.
-    /// Returns an empty line if CRLF is not found.
+    /// The caller owns the returned memory. Buffer becomes empty.
+    pub fn toOwnedSlice(self: *Buffer) []const u8 {
+        const result = self.data.toOwnedSlice();
+        self.* = init(self.allocator);
+        return result;
+    }
+
+    /// Read bytes up to a CRLF
     pub fn readLine(self: *Buffer) ![]u8 {
         const data = self.data.items;
         var start = self.cursor;
