@@ -5,10 +5,6 @@ const EventError = @import("errors.zig").EventError;
 pub const Data = struct {
     body: []const u8,
 
-    pub fn deinit(self: *Data) void {
-        // TODO: Data needs to own its payload
-    }
-
     pub fn parse(buffer: *Buffer, contentLength: usize) !Data {
         var bufferSize = buffer.len();
         if (bufferSize < contentLength) {
