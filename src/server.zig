@@ -19,12 +19,12 @@ pub const ServerAutomaton = struct {
     pub fn nextEvent(self: *ServerAutomaton, buffer: *Buffer) !Event {
         var event: Event = undefined;
         switch(self.state) {
-            State.Idle => event = try self.nextEventWhenIdle(buffer),
-            State.SendBody => event = try self.nextEventWhenSendingBody(buffer),
-            State.Done => event = self.nextEventWhenDone(buffer),
+            .Idle => event = try self.nextEventWhenIdle(buffer),
+            .SendBody => event = try self.nextEventWhenSendingBody(buffer),
+            .Done => event = self.nextEventWhenDone(buffer),
             else => {
-                self.state = State.Error;
-                event = Event{ .ConnectionClosed = undefined };
+                self.state = .Error;
+                event = .ConnectionClosed;
             }
         }
 
@@ -44,31 +44,31 @@ pub const ServerAutomaton = struct {
     }
 
     fn nextEventWhenDone(self: *ServerAutomaton, buffer: *Buffer) Event {
-        return Event{ .EndOfMessage = undefined };
+        return .EndOfMessage;
     }
 
     pub fn changeState(self: *ServerAutomaton, event: Event) void {
         switch (self.state) {
-            State.Idle => {
+            .Idle => {
                 switch (event) {
-                    EventTag.ConnectionClosed => self.state = State.Closed,
-                    EventTag.Response => self.state = State.SendBody,
-                    else => self.state = State.Error,
+                    .ConnectionClosed => self.state = .Closed,
+                    .Response => self.state = .SendBody,
+                    else => self.state = .Error,
                 }
             },
-            State.SendBody => {
+            .SendBody => {
                 switch (event) {
-                    EventTag.Data => self.state = State.Done,
-                    else => self.state = State.Error,
+                    .Data => self.state = .Done,
+                    else => self.state = .Error,
                 }
             },
-            State.Done => {
+            .Done => {
                 switch (event) {
-                    EventTag.ConnectionClosed => self.state = State.Closed,
-                    else => self.state = State.Error,
+                    .ConnectionClosed => self.state = .Closed,
+                    else => self.state = .Error,
                 }
             },
-            else => self.state = State.Error,
+            else => self.state = .Error,
         }
     }
 };

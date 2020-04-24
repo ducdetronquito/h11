@@ -19,42 +19,42 @@ pub const ClientAutomaton = struct {
     }
 
     pub fn send(self: *ClientAutomaton, event: Event) ![]const u8 {
-        switch (self.state) {
-            State.Idle => return try self.sendWhenIdle(event),
-            State.SendBody => return try self.sendWhenSendingBody(event),
-            else => {
-                self.state = State.Error;
-                return EventError.LocalProtocolError;
+        return switch (self.state) {
+            .Idle => self.sendWhenIdle(event),
+            .SendBody => self.sendWhenSendingBody(event),
+            else => blk: {
+                self.state = .Error;
+                break :blk EventError.LocalProtocolError;
             },
-        }
+        };
     }
 
     fn sendWhenIdle(self: *ClientAutomaton, event: Event) ![]const u8 {
         return switch (event) {
-            EventTag.Request => |request| {
+            .Request => |request| blk: {
                 var result = try request.serialize(self.allocator);
 
-                self.state = State.SendBody;
+                self.state = .SendBody;
 
-                return result;
+                break :blk result;
             },
-            else => {
-                self.state = State.Error;
-                return EventError.LocalProtocolError;
+            else => blk: {
+                self.state = .Error;
+                break :blk EventError.LocalProtocolError;
             },
         };
     }
 
     fn sendWhenSendingBody(self: *ClientAutomaton, event: Event) ![]const u8 {
         return switch (event) {
-            EventTag.Data => |value| return value.body,
-            EventTag.EndOfMessage => {
-                self.state = State.Done;
-                return "";
+            .Data => |value| value.body,
+            .EndOfMessage => blk: {
+                self.state = .Done;
+                break :blk "";
             },
-            else => {
-                self.state = State.Error;
-                return EventError.LocalProtocolError;
+            else => blk: {
+                self.state = .Error;
+                break :blk EventError.LocalProtocolError;
             },
         };
     }
@@ -72,7 +72,7 @@ test "Send - When Idle - Can send a Request event" {
     defer testing.allocator.free(bytesToSend);
 
     testing.expect(std.mem.eql(u8, bytesToSend, "GET /xml HTTP/1.1\r\nHost: httpbin.org\r\n\r\n"));
-    testing.expect(client.state == State.SendBody);
+    testing.expect(client.state == .SendBody);
 }
 
 test "Send - When Idle - Returns a LocalProtocolError on any non-Request event" {
@@ -81,17 +81,17 @@ test "Send - When Idle - Returns a LocalProtocolError on any non-Request event" 
     var bytesToSend = client.send(Event{ .EndOfMessage = undefined });
 
     testing.expectError(EventError.LocalProtocolError, bytesToSend);
-    testing.expect(client.state == State.Error);
+    testing.expect(client.state == .Error);
 }
 
 test "Send - When Sending Body - Can send a Data event" {
     var client = ClientAutomaton.init(testing.allocator);
-    client.state = State.SendBody;
+    client.state = .SendBody;
 
     var bytesToSend = try client.send(Event{ .Data = Data{ .body = "Hello World!" } });
 
     testing.expect(std.mem.eql(u8, bytesToSend, "Hello World!"));
-    testing.expect(client.state == State.SendBody);
+    testing.expect(client.state == .SendBody);
 }
 
 test "Send - When Sending Body - Can send a EndOfMessage event" {
@@ -99,11 +99,11 @@ test "Send - When Sending Body - Can send a EndOfMessage event" {
     const allocator = &std.heap.FixedBufferAllocator.init(&buffer).allocator;
 
     var client = ClientAutomaton.init(allocator);
-    client.state = State.SendBody;
+    client.state = .SendBody;
 
-    var bytesToSend = try client.send(Event{ .EndOfMessage = undefined });
+    var bytesToSend = try client.send(.EndOfMessage);
     testing.expect(std.mem.eql(u8, bytesToSend, ""));
-    testing.expect(client.state == State.Done);
+    testing.expect(client.state == .Done);
 }
 
 test "Send - When Sending Body - Returns a LocalProtocolError on any other events" {
@@ -111,12 +111,12 @@ test "Send - When Sending Body - Returns a LocalProtocolError on any other event
     const allocator = &std.heap.FixedBufferAllocator.init(&buffer).allocator;
 
     var client = ClientAutomaton.init(allocator);
-    client.state = State.SendBody;
+    client.state = .SendBody;
 
     var headers = [_]HeaderField{HeaderField{ .name = "Host", .value = "httpbin.org" }};
     var request = Request{ .method = "GET", .target = "/xml", .headers = headers[0..] };
 
     var bytesToSend = client.send(Event{ .Request = request });
     testing.expectError(EventError.LocalProtocolError, bytesToSend);
-    testing.expect(client.state == State.Error);
+    testing.expect(client.state == .Error);
 }
