@@ -18,18 +18,18 @@ pub const ClientAutomaton = struct {
         return ClientAutomaton{ .allocator = allocator, .state = State.Idle };
     }
 
-    pub fn send(self: *ClientAutomaton, event: Event) ![]const u8 {
+    pub fn send(self: *ClientAutomaton, event: Event) EventError![]const u8 {
         return switch (self.state) {
             .Idle => self.sendWhenIdle(event),
             .SendBody => self.sendWhenSendingBody(event),
             else => blk: {
                 self.state = .Error;
-                break :blk EventError.LocalProtocolError;
+                break :blk error.LocalProtocolError;
             },
         };
     }
 
-    fn sendWhenIdle(self: *ClientAutomaton, event: Event) ![]const u8 {
+    fn sendWhenIdle(self: *ClientAutomaton, event: Event) EventError![]const u8 {
         return switch (event) {
             .Request => |request| blk: {
                 var result = try request.serialize(self.allocator);
@@ -40,12 +40,12 @@ pub const ClientAutomaton = struct {
             },
             else => blk: {
                 self.state = .Error;
-                break :blk EventError.LocalProtocolError;
+                break :blk error.LocalProtocolError;
             },
         };
     }
 
-    fn sendWhenSendingBody(self: *ClientAutomaton, event: Event) ![]const u8 {
+    fn sendWhenSendingBody(self: *ClientAutomaton, event: Event) EventError![]const u8 {
         return switch (event) {
             .Data => |value| value.body,
             .EndOfMessage => blk: {
@@ -54,7 +54,7 @@ pub const ClientAutomaton = struct {
             },
             else => blk: {
                 self.state = .Error;
-                break :blk EventError.LocalProtocolError;
+                break :blk error.LocalProtocolError;
             },
         };
     }
@@ -80,7 +80,7 @@ test "Send - When Idle - Returns a LocalProtocolError on any non-Request event" 
 
     var bytesToSend = client.send(Event{ .EndOfMessage = undefined });
 
-    testing.expectError(EventError.LocalProtocolError, bytesToSend);
+    testing.expectError(error.LocalProtocolError, bytesToSend);
     testing.expect(client.state == .Error);
 }
 
@@ -117,6 +117,6 @@ test "Send - When Sending Body - Returns a LocalProtocolError on any other event
     var request = Request{ .method = "GET", .target = "/xml", .headers = headers[0..] };
 
     var bytesToSend = client.send(Event{ .Request = request });
-    testing.expectError(EventError.LocalProtocolError, bytesToSend);
+    testing.expectError(error.LocalProtocolError, bytesToSend);
     testing.expect(client.state == .Error);
 }

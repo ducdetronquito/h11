@@ -1,8 +1,12 @@
-const std = @import("std");
 const Allocator = std.mem.Allocator;
+const EventError = h11.EventError;
 const h11 = @import("h11");
+const ReadError = std.os.ReadError;
 const Response = @import("response.zig").Response;
+const std = @import("std");
 const Url = @import("url.zig").Url;
+
+pub const ClientError = EventError || ReadError;
 
 pub const HttpClient = struct {
     allocator: *Allocator,
@@ -48,7 +52,7 @@ pub const HttpClient = struct {
         return client.readResponse();
     }
 
-    fn readResponse(self: *HttpClient) !Response {
+    fn readResponse(self: *HttpClient) ClientError!Response {
         var response = Response.init(self.allocator);
 
         while (true) {
@@ -71,7 +75,7 @@ pub const HttpClient = struct {
         }
     }
 
-    fn nextEvent(self: *HttpClient) !h11.Event {
+    fn nextEvent(self: *HttpClient) ClientError!h11.Event {
         while (true) {
             var event = self.connection.nextEvent() catch |err| switch (err) {
                 h11.EventError.NeedData => {

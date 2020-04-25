@@ -5,13 +5,13 @@ const EventError = @import("errors.zig").EventError;
 pub const Data = struct {
     body: []const u8,
 
-    pub fn parse(buffer: *Buffer, contentLength: usize) !Data {
+    pub fn parse(buffer: *Buffer, contentLength: usize) EventError!Data {
         var bufferSize = buffer.len();
         if (bufferSize < contentLength) {
-            return EventError.NeedData;
+            return error.NeedData;
         }
         if (bufferSize > contentLength) {
-            return EventError.RemoteProtocolError;
+            return error.RemoteProtocolError;
         }
 
         return Data{ .body = buffer.read(contentLength) };
@@ -36,7 +36,7 @@ test "Parse - Larger payload than expected - Returns RemoteProtocolError" {
     try buffer.append("Hello World!");
     var data = Data.parse(&buffer, 10);
 
-    testing.expectError(EventError.RemoteProtocolError, data);
+    testing.expectError(error.RemoteProtocolError, data);
 }
 
 test "Parse - Success" {

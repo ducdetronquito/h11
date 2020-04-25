@@ -3,6 +3,7 @@ const Allocator = std.mem.Allocator;
 const Buffer = @import("buffer.zig").Buffer;
 const Data = @import("events.zig").Data;
 const Event = @import("events.zig").Event;
+const EventError = @import("events.zig").EventError;
 const EventTag = @import("events.zig").EventTag;
 const Response = @import("events.zig").Response;
 const State = @import("states.zig").State;
@@ -16,7 +17,7 @@ pub const ServerAutomaton = struct {
         return ServerAutomaton{ .allocator = allocator, .state = State.Idle };
     }
 
-    pub fn nextEvent(self: *ServerAutomaton, buffer: *Buffer) !Event {
+    pub fn nextEvent(self: *ServerAutomaton, buffer: *Buffer) EventError!Event {
         var event: Event = undefined;
         switch(self.state) {
             .Idle => event = try self.nextEventWhenIdle(buffer),
@@ -32,13 +33,13 @@ pub const ServerAutomaton = struct {
         return event;
     }
 
-    fn nextEventWhenIdle(self: *ServerAutomaton, buffer: *Buffer) !Event {
+    fn nextEventWhenIdle(self: *ServerAutomaton, buffer: *Buffer) EventError!Event {
         var response = try Response.parse(buffer, self.allocator);
         self.contentLength = try response.getContentLength();
         return Event{ .Response = response };
     }
 
-    fn nextEventWhenSendingBody(self: *ServerAutomaton, buffer: *Buffer) !Event {
+    fn nextEventWhenSendingBody(self: *ServerAutomaton, buffer: *Buffer) EventError!Event {
         var data = try Data.parse(buffer, self.contentLength);
         return Event{ .Data = data };
     }
