@@ -1,8 +1,10 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const AllocationError = @import("errors.zig").AllocationError;
 const Buffer = @import("buffer.zig").Buffer;
 const ClientAutomaton = @import("client.zig").ClientAutomaton;
 const Event = @import("events.zig").Event;
+const EventError = @import("events.zig").EventError;
 const HeaderField = @import("events.zig").HeaderField;
 const Request = @import("events.zig").Request;
 const ServerAutomaton = @import("server.zig").ServerAutomaton;
@@ -25,15 +27,15 @@ fn Connection(comptime L: type, comptime R: type) type {
             self.buffer.deinit();
         }
 
-        pub fn receiveData(self: *Connection(L, R), data: []const u8) !void {
+        pub fn receiveData(self: *Connection(L, R), data: []const u8) AllocationError!void {
             try self.buffer.append(data);
         }
 
-        pub fn nextEvent(self: *Connection(L, R)) !Event {
+        pub fn nextEvent(self: *Connection(L, R)) EventError!Event {
             return self.remoteState.nextEvent(&self.buffer);
         }
 
-        pub fn send(self: *Connection(L, R), event: Event) ![]const u8 {
+        pub fn send(self: *Connection(L, R), event: Event) EventError![]const u8 {
             return self.localState.send(event);
         }
     };

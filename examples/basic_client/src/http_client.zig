@@ -1,8 +1,12 @@
-const std = @import("std");
 const Allocator = std.mem.Allocator;
+const EventError = h11.EventError;
 const h11 = @import("h11");
+const ReadError = std.os.ReadError;
 const Response = @import("response.zig").Response;
+const std = @import("std");
 const Url = @import("url.zig").Url;
+
+pub const ClientError = EventError || ReadError;
 
 pub const HttpClient = struct {
     allocator: *Allocator,
@@ -43,26 +47,26 @@ pub const HttpClient = struct {
 
         var nBytes = try client.socket.write(requestBytes);
 
-        _ = try client.connection.send(h11.Event{ .EndOfMessage = undefined });
+        _ = try client.connection.send(.EndOfMessage);
 
         return client.readResponse();
     }
 
-    fn readResponse(self: *HttpClient) !Response {
+    fn readResponse(self: *HttpClient) ClientError!Response {
         var response = Response.init(self.allocator);
 
         while (true) {
             var event = try self.nextEvent();
 
             switch (event) {
-                h11.EventTag.Response => |*responseEvent| {
+                .Response => |*responseEvent| {
                     response.statusCode = responseEvent.statusCode;
                     response.headers = responseEvent.headers.toOwnedSlice();
                 },
-                h11.EventTag.Data => |*dataEvent| {
+                .Data => |*dataEvent| {
                     response.body = dataEvent.body;
                 },
-                h11.EventTag.EndOfMessage => {
+                .EndOfMessage => {
                     response.buffer = self.connection.buffer.toOwnedSlice();
                     return response;
                 },
@@ -71,7 +75,7 @@ pub const HttpClient = struct {
         }
     }
 
-    fn nextEvent(self: *HttpClient) !h11.Event {
+    fn nextEvent(self: *HttpClient) ClientError!h11.Event {
         while (true) {
             var event = self.connection.nextEvent() catch |err| switch (err) {
                 h11.EventError.NeedData => {

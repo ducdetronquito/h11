@@ -24,7 +24,7 @@ pub const Response = struct {
         self.headers.deinit();
     }
 
-    pub fn parse(buffer: *Buffer, allocator: *Allocator) !Response {
+    pub fn parse(buffer: *Buffer, allocator: *Allocator) EventError!Response {
         var statusLine = try Response.parseStatusLine(buffer);
 
         var headers = try Headers.parse(allocator, buffer);
@@ -32,24 +32,24 @@ pub const Response = struct {
         return Response.init(allocator, statusLine.statusCode, headers);
     }
 
-    pub fn parseStatusLine(buffer: *Buffer) !StatusLine {
-        var line = buffer.readLine() catch return EventError.NeedData;
+    pub fn parseStatusLine(buffer: *Buffer) EventError!StatusLine {
+        var line = buffer.readLine() catch return error.NeedData;
 
         if (line.len < 12) {
-            return EventError.NeedData;
+            return error.NeedData;
         }
 
         const httpVersion = line[0..9];
         if (!std.mem.eql(u8, httpVersion, "HTTP/1.1 ")) {
-            return EventError.RemoteProtocolError;
+            return error.RemoteProtocolError;
         }
 
-        const statusCode = std.fmt.parseInt(i32, line[9..12], 10) catch return EventError.RemoteProtocolError;
+        const statusCode = std.fmt.parseInt(i32, line[9..12], 10) catch return error.RemoteProtocolError;
 
         return StatusLine{ .statusCode = statusCode };
     }
 
-    pub fn getContentLength(self: *Response) !usize {
+    pub fn getContentLength(self: *Response) EventError!usize {
         var rawContentLength: []const u8 = "0";
         for (self.headers.fields) |field| {
             if (std.mem.eql(u8, field.name, "content-length")) {
@@ -58,7 +58,7 @@ pub const Response = struct {
         }
 
         const contentLength = std.fmt.parseInt(usize, rawContentLength, 10) catch {
-            return EventError.RemoteProtocolError;
+            return error.RemoteProtocolError;
         };
 
         return contentLength;
@@ -74,7 +74,7 @@ test "Parse Status Line- When the status line does not end with a CRLF - Returns
 
     var statusLine = Response.parseStatusLine(&buffer);
 
-    testing.expectError(EventError.NeedData, statusLine);
+    testing.expectError(error.NeedData, statusLine);
 }
 
 test "Parse Status Line - When the http version is not HTTP/1.1 - Returns RemoteProtocolError" {
@@ -84,7 +84,7 @@ test "Parse Status Line - When the http version is not HTTP/1.1 - Returns Remote
 
     var statusLine = Response.parseStatusLine(&buffer);
 
-    testing.expectError(EventError.RemoteProtocolError, statusLine);
+    testing.expectError(error.RemoteProtocolError, statusLine);
 }
 
 test "Parse Status Line - When the status code is not made of 3 digits - Returns RemoteProtocolError" {
@@ -94,7 +94,7 @@ test "Parse Status Line - When the status code is not made of 3 digits - Returns
 
     var statusLine = Response.parseStatusLine(&buffer);
 
-    testing.expectError(EventError.RemoteProtocolError, statusLine);
+    testing.expectError(error.RemoteProtocolError, statusLine);
 }
 
 test "Parse Status Line" {
@@ -143,5 +143,5 @@ test "Get Content Length - When value is not a integer - Returns RemoteProtocolE
 
     var contentLength = response.getContentLength();
 
-    testing.expectError(EventError.RemoteProtocolError, contentLength);
+    testing.expectError(error.RemoteProtocolError, contentLength);
 }

@@ -29,7 +29,7 @@ test "Client - Send Get request and read response." {
     defer testing.allocator.free(expectedRequest);
     testing.expect(std.mem.eql(u8, requestBytes, expectedRequest));
 
-    var endOfMessageBytes = try client.send(h11.Event{ .EndOfMessage = undefined });
+    var endOfMessageBytes = try client.send(.EndOfMessage);
     defer std.testing.allocator.free(endOfMessageBytes);
 
     // ----- Receive a response -----
@@ -77,7 +77,7 @@ test "Client - Send Get request and read response." {
 
     var event = try client.nextEvent();
     switch (event) {
-        h11.EventTag.Response => |*response| {
+        .Response => |*response| {
             defer response.deinit();
             testing.expect(response.statusCode == 200);
             testing.expect(std.mem.eql(u8, response.headers.fields[0].name, "date"));
@@ -90,7 +90,7 @@ test "Client - Send Get request and read response." {
 
     event = try client.nextEvent();
     switch (event) {
-        h11.EventTag.Data => |*data| {
+        .Data => |*data| {
             testing.expect(std.mem.eql(u8, data.body, responseDataBytes));
         },
         else => unreachable,
@@ -98,7 +98,7 @@ test "Client - Send Get request and read response." {
 
     event = try client.nextEvent();
     switch (event) {
-        h11.EventTag.EndOfMessage => return,
+        .EndOfMessage => return,
         else => unreachable,
     }
 }

@@ -10,6 +10,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const AllocationError = @import("errors.zig").AllocationError;
 const ArrayList = std.ArrayList;
 const Buffer = @import("../buffer.zig").Buffer;
 const EventError = @import("errors.zig").EventError;
@@ -44,12 +45,12 @@ pub const Headers = struct {
         return result;
     }
 
-    pub fn parse(allocator: *Allocator, buffer: *Buffer) !Headers{
+    pub fn parse(allocator: *Allocator, buffer: *Buffer) EventError!Headers{
         var fields = ArrayList(HeaderField).init(allocator);
         errdefer fields.deinit();
 
         while (true) {
-            const line = buffer.readLine() catch return EventError.NeedData;
+            const line = buffer.readLine() catch return error.NeedData;
 
             if (line.len == 0) {
                 break;
@@ -62,7 +63,7 @@ pub const Headers = struct {
         return Headers.fromOwnedSlice(allocator, fields.toOwnedSlice());
     }
 
-    fn parseHeaderField(data: []u8) !HeaderField {
+    fn parseHeaderField(data: []u8) EventError!HeaderField {
         var cursor: usize = 0;
         while (cursor < data.len) {
             if (data[cursor] == ':') {
@@ -72,14 +73,14 @@ pub const Headers = struct {
             }
             cursor += 1;
         }
-        return EventError.RemoteProtocolError;
+        return error.RemoteProtocolError;
     }
 
-    fn parseFieldName(data: []u8) ![]u8 {
+    fn parseFieldName(data: []u8) EventError![]u8 {
         // No whitespace is allowed between the header field-name and colon.
         // Cf: https://tools.ietf.org/html/rfc7230#section-3.2.4
         if (data[data.len - 1] == ' ') {
-            return EventError.RemoteProtocolError;
+            return error.RemoteProtocolError;
         }
 
         for (data) |item, i| {
@@ -116,7 +117,7 @@ pub const Headers = struct {
         return char == ' ' or char == '\t';
     }
 
-    pub fn serialize(allocator: *Allocator, headers: []HeaderField) ![]const u8 {
+    pub fn serialize(allocator: *Allocator, headers: []HeaderField) AllocationError![]const u8 {
         var buffer = ArrayList(u8).init(allocator);
 
         for (headers) |header| {
@@ -144,7 +145,7 @@ test "Parse field name - When ends with a whitespace - Returns RemoteProtocolErr
     defer testing.allocator.free(name);
 
     var headers = Headers.parseFieldName(name);
-    testing.expectError(EventError.RemoteProtocolError, headers);
+    testing.expectError(error.RemoteProtocolError, headers);
 }
 
 test "Parse field name - Name is lowercased" {
@@ -180,7 +181,7 @@ test "Parse header field - When colon is missing - Returns RemoteProtocolError" 
 
     var headerField = Headers.parseHeaderField(field);
 
-    testing.expectError(EventError.RemoteProtocolError, headerField);
+    testing.expectError(error.RemoteProtocolError, headerField);
 }
 
 test "Parse - When the headers does not end with an empty line - Returns NeedData" {
@@ -193,7 +194,7 @@ test "Parse - When the headers does not end with an empty line - Returns NeedDat
 
     var headers = Headers.parse(testing.allocator, &buffer);
 
-    testing.expectError(EventError.NeedData, headers);
+    testing.expectError(error.NeedData, headers);
 }
 
 test "Parse" {

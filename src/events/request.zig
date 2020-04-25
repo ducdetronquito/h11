@@ -1,6 +1,8 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const AllocationError = @import("errors.zig").AllocationError;
 const ArrayList = std.ArrayList;
+const EventError = @import("errors.zig").EventError;
 const Headers = @import("headers.zig").Headers;
 const HeaderField = @import("headers.zig").HeaderField;
 
@@ -10,7 +12,7 @@ pub const Request = struct {
     target: []const u8,
     headers: []HeaderField,
 
-    pub fn serialize(self: Request, allocator: *Allocator) ![]const u8 {
+    pub fn serialize(self: Request, allocator: *Allocator) EventError![]const u8 {
         var buffer = ArrayList(u8).init(allocator);
 
         var requestLine = try self.serializeRequestLine(allocator);
@@ -25,7 +27,7 @@ pub const Request = struct {
         return buffer.toOwnedSlice();
     }
 
-    fn serializeRequestLine(self: Request, allocator: *Allocator) ![]const u8 {
+    fn serializeRequestLine(self: Request, allocator: *Allocator) AllocationError![]const u8 {
         var buffer = ArrayList(u8).init(allocator);
         try buffer.appendSlice(self.method);
         try buffer.append(' ');

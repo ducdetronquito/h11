@@ -1,5 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const AllocationError = @import("errors.zig").AllocationError;
 const ArrayList = std.ArrayList;
 
 
@@ -30,7 +31,7 @@ pub const Buffer = struct {
     }
 
     /// Read bytes up to a CRLF
-    pub fn readLine(self: *Buffer) ![]u8 {
+    pub fn readLine(self: *Buffer) BufferError![]u8 {
         const data = self.data.items;
         var start = self.cursor;
         var cursor = self.cursor;
@@ -49,7 +50,7 @@ pub const Buffer = struct {
             self.cursor = cursor;
             return data[start..cursor - 2];
         } else {
-            return BufferError.EndOfStream;
+            return error.EndOfStream;
         }
     }
 
@@ -68,7 +69,7 @@ pub const Buffer = struct {
         return self.len() == 0;
     }
 
-    pub fn append(self: *Buffer, slice: []const u8) !void {
+    pub fn append(self: *Buffer, slice: []const u8) AllocationError!void {
         try self.data.appendSlice(slice);
     }
 };
@@ -89,7 +90,7 @@ test "ReadLine - No CRLF - Returns EndOfStream" {
 
     var line = buffer.readLine();
 
-    testing.expectError(BufferError.EndOfStream, line);
+    testing.expectError(error.EndOfStream, line);
 }
 
 test "ReadLine - Read line returns the entire buffer" {
