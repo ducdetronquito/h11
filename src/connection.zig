@@ -32,7 +32,10 @@ fn Connection(comptime L: type, comptime R: type) type {
         }
 
         pub fn nextEvent(self: *Connection(L, R)) EventError!Event {
-            return self.remoteState.nextEvent(&self.buffer);
+            var stream = self.buffer.toStream();
+            var event = try self.remoteState.nextEvent(&stream);
+            self.buffer.move(stream.cursor);
+            return event;
         }
 
         pub fn send(self: *Connection(L, R), event: Event) EventError![]const u8 {
