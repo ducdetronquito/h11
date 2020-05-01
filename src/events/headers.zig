@@ -12,8 +12,8 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const AllocationError = @import("errors.zig").AllocationError;
 const ArrayList = std.ArrayList;
-const Buffer = @import("../buffer.zig").Buffer;
 const EventError = @import("errors.zig").EventError;
+const Stream = @import("../stream.zig").Stream;
 
 pub const HeaderField = struct {
     name: []const u8,
@@ -45,12 +45,12 @@ pub const Headers = struct {
         return result;
     }
 
-    pub fn parse(allocator: *Allocator, buffer: *Buffer) EventError!Headers{
+    pub fn parse(allocator: *Allocator, stream: *Stream) EventError!Headers{
         var fields = ArrayList(HeaderField).init(allocator);
         errdefer fields.deinit();
 
         while (true) {
-            const line = buffer.readLine() catch return error.NeedData;
+            const line = stream.readLine() catch return error.NeedData;
 
             if (line.len == 0) {
                 break;
@@ -187,12 +187,9 @@ test "Parse header field - When colon is missing - Returns RemoteProtocolError" 
 test "Parse - When the headers does not end with an empty line - Returns NeedData" {
     var bytes = try allocate(testing.allocator, "ServerApache");
     defer testing.allocator.free(bytes);
+    var stream = Stream.init(bytes);
 
-    var buffer = Buffer.init(testing.allocator);
-    defer buffer.deinit();
-    try buffer.append(bytes);
-
-    var headers = Headers.parse(testing.allocator, &buffer);
+    var headers = Headers.parse(testing.allocator, &stream);
 
     testing.expectError(error.NeedData, headers);
 }
@@ -200,12 +197,9 @@ test "Parse - When the headers does not end with an empty line - Returns NeedDat
 test "Parse" {
     var bytes = try allocate(testing.allocator, "server: Apache\r\ncontent-length: 51\r\n\r\n");
     defer testing.allocator.free(bytes);
+    var stream = Stream.init(bytes);
 
-    var buffer = Buffer.init(testing.allocator);
-    defer buffer.deinit();
-    try buffer.append(bytes);
-
-    var headers = try Headers.parse(testing.allocator, &buffer);
+    var headers = try Headers.parse(testing.allocator, &stream);
     defer headers.deinit();
 
     testing.expect(std.mem.eql(u8, headers.fields[0].name, "server"));

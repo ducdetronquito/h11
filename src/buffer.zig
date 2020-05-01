@@ -2,21 +2,17 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const AllocationError = @import("errors.zig").AllocationError;
 const ArrayList = std.ArrayList;
-
-
-pub const BufferError = error {
-    EndOfStream,
-};
+const Stream = @import("stream.zig").Stream;
 
 
 pub const Buffer = struct {
     allocator: *Allocator,
-    data: ArrayList(u8),
     cursor: usize,
+    data: ArrayList(u8),
 
     pub fn init(allocator: *Allocator) Buffer {
         var data = ArrayList(u8).init(allocator);
-        return Buffer{ .allocator = allocator, .data = data, .cursor = 0 };
+        return Buffer{ .allocator = allocator, .cursor = 0, .data = data };
     }
 
     pub fn deinit(self: *Buffer) void {
@@ -30,109 +26,15 @@ pub const Buffer = struct {
         return result;
     }
 
-    /// Read bytes up to a CRLF
-    pub fn readLine(self: *Buffer) BufferError![]u8 {
-        const data = self.data.items;
-        var start = self.cursor;
-        var cursor = self.cursor;
-
-        var lineFound = false;
-        while (cursor < data.len) {
-            if ((data[cursor] == '\n') and (data[cursor - 1] == '\r')) {
-                cursor += 1;
-                lineFound = true;
-                break;
-            }
-            cursor += 1;
-        }
-
-        if (lineFound) {
-            self.cursor = cursor;
-            return data[start..cursor - 2];
-        } else {
-            return error.EndOfStream;
-        }
-    }
-
-    pub fn read(self: *Buffer, size: usize) []u8 {
-        const end = std.math.min(size, self.len());
-        const result = self.data.items[self.cursor..self.cursor + end];
-        self.cursor += size;
-        return result;
-    }
-
-    pub fn len(self: *Buffer) usize {
-        return self.data.items.len - self.cursor;
-    }
-
-    pub fn isEmpty(self: *Buffer) bool {
-        return self.len() == 0;
-    }
-
     pub fn append(self: *Buffer, slice: []const u8) AllocationError!void {
         try self.data.appendSlice(slice);
     }
+
+    pub fn toStream(self: *Buffer) Stream {
+        return Stream.init(self.data.items[self.cursor..]);
+    }
+
+    pub fn move(self: *Buffer, offset: usize) void {
+        self.cursor += offset;
+    }
 };
-
-
-const testing = std.testing;
-
-test "Init and deinit" {
-    var buffer = Buffer.init(testing.allocator);
-    defer buffer.deinit();
-}
-
-
-test "ReadLine - No CRLF - Returns EndOfStream" {
-    var buffer = Buffer.init(testing.allocator);
-    defer buffer.deinit();
-    try buffer.append("HTTP/1.1 200 OK");
-
-    var line = buffer.readLine();
-
-    testing.expectError(error.EndOfStream, line);
-}
-
-test "ReadLine - Read line returns the entire buffer" {
-    var buffer = Buffer.init(testing.allocator);
-    defer buffer.deinit();
-    try buffer.append("HTTP/1.1 200 OK\r\n");
-
-    var line = try buffer.readLine();
-
-    testing.expect(std.mem.eql(u8, line, "HTTP/1.1 200 OK"));
-}
-
-test "ReadLine - Read line returns the remaining buffer" {
-    var buffer = Buffer.init(testing.allocator);
-    defer buffer.deinit();
-    try buffer.append("HTTP/1.1 200 OK\r\n");
-    _ = buffer.read(9);
-
-    var line = try buffer.readLine();
-
-    testing.expect(std.mem.eql(u8, line, "200 OK"));
-}
-
-test "ReadLine - Read lines one by one " {
-    var buffer = Buffer.init(testing.allocator);
-    defer buffer.deinit();
-    try buffer.append("HTTP/1.1 200 OK\r\nServer: Apache\r\nContent-Length: 51\r\n");
-
-    var firstLine = try buffer.readLine();
-    var secondLine = try buffer.readLine();
-    var thirdLine = try buffer.readLine();
-
-    testing.expect(std.mem.eql(u8, firstLine, "HTTP/1.1 200 OK"));
-    testing.expect(std.mem.eql(u8, secondLine, "Server: Apache"));
-    testing.expect(std.mem.eql(u8, thirdLine, "Content-Length: 51"));
-}
-
-test "Read - Success " {
-    var buffer = Buffer.init(testing.allocator);
-    defer buffer.deinit();
-    try buffer.append("HTTP/1.1 200 OK");
-
-    var httpVersion = buffer.read(8);
-    testing.expect(std.mem.eql(u8, httpVersion, "HTTP/1.1"));
-}

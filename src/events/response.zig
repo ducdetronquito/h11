@@ -1,10 +1,10 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
-const Buffer = @import("../buffer.zig").Buffer;
 const EventError = @import("errors.zig").EventError;
 const Headers = @import("headers.zig").Headers;
 const HeaderField = @import("headers.zig").HeaderField;
+const Stream = @import("../stream.zig").Stream;
 
 pub const StatusLine = struct {
     statusCode: i32,
@@ -24,16 +24,16 @@ pub const Response = struct {
         self.headers.deinit();
     }
 
-    pub fn parse(buffer: *Buffer, allocator: *Allocator) EventError!Response {
-        var statusLine = try Response.parseStatusLine(buffer);
+    pub fn parse(stream: *Stream, allocator: *Allocator) EventError!Response {
+        var statusLine = try Response.parseStatusLine(stream);
 
-        var headers = try Headers.parse(allocator, buffer);
+        var headers = try Headers.parse(allocator, stream);
 
         return Response.init(allocator, statusLine.statusCode, headers);
     }
 
-    pub fn parseStatusLine(buffer: *Buffer) EventError!StatusLine {
-        var line = buffer.readLine() catch return error.NeedData;
+    pub fn parseStatusLine(stream: *Stream) EventError!StatusLine {
+        var line = stream.readLine() catch return error.NeedData;
 
         if (line.len < 12) {
             return error.NeedData;
@@ -68,52 +68,47 @@ pub const Response = struct {
 const testing = std.testing;
 
 test "Parse Status Line- When the status line does not end with a CRLF - Returns NeedData" {
-    var buffer = Buffer.init(testing.allocator);
-    defer buffer.deinit();
-    try buffer.append("HTTP/1.1 200 OK");
+    var content = "HTTP/1.1 200 OK".*;
+    var stream = Stream.init(&content);
 
-    var statusLine = Response.parseStatusLine(&buffer);
+    var statusLine = Response.parseStatusLine(&stream);
 
     testing.expectError(error.NeedData, statusLine);
 }
 
 test "Parse Status Line - When the http version is not HTTP/1.1 - Returns RemoteProtocolError" {
-    var buffer = Buffer.init(testing.allocator);
-    defer buffer.deinit();
-    try buffer.append("HTTP/2.0 200 OK\r\n");
+    var content = "HTTP/2.0 200 OK\r\n".*;
+    var stream = Stream.init(&content);
 
-    var statusLine = Response.parseStatusLine(&buffer);
+    var statusLine = Response.parseStatusLine(&stream);
 
     testing.expectError(error.RemoteProtocolError, statusLine);
 }
 
 test "Parse Status Line - When the status code is not made of 3 digits - Returns RemoteProtocolError" {
-    var buffer = Buffer.init(testing.allocator);
-    defer buffer.deinit();
-    try buffer.append("HTTP/1.1 20x OK\r\n");
+    var content = "HTTP/1.1 20x OK\r\n".*;
+    var stream = Stream.init(&content);
 
-    var statusLine = Response.parseStatusLine(&buffer);
+    var statusLine = Response.parseStatusLine(&stream);
 
     testing.expectError(error.RemoteProtocolError, statusLine);
 }
 
 test "Parse Status Line" {
-    var buffer = Buffer.init(testing.allocator);
-    defer buffer.deinit();
-    try buffer.append("HTTP/1.1 405 Method Not Allowed\r\n");
+    var content = "HTTP/1.1 405 Method Not Allowed\r\n".*;
+    var stream = Stream.init(&content);
 
-    var statusLine = try Response.parseStatusLine(&buffer);
+    var statusLine = try Response.parseStatusLine(&stream);
 
     testing.expect(statusLine.statusCode == 405);
-    testing.expect(buffer.isEmpty());
+    testing.expect(stream.isEmpty());
 }
 
 test "Parse" {
-    var buffer = Buffer.init(testing.allocator);
-    defer buffer.deinit();
-    try buffer.append("HTTP/1.1 200 OK\r\nServer: Apache\r\nContent-Length: 12\r\n\r\n");
+    var content = "HTTP/1.1 200 OK\r\nServer: Apache\r\nContent-Length: 12\r\n\r\n".*;
+    var stream = Stream.init(&content);
 
-    var response = try Response.parse(&buffer, testing.allocator);
+    var response = try Response.parse(&stream, testing.allocator);
     defer response.deinit();
 
     testing.expect(response.statusCode == 200);

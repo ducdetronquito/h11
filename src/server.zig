@@ -1,12 +1,12 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const Buffer = @import("buffer.zig").Buffer;
 const Data = @import("events.zig").Data;
 const Event = @import("events.zig").Event;
 const EventError = @import("events.zig").EventError;
 const EventTag = @import("events.zig").EventTag;
 const Response = @import("events.zig").Response;
 const State = @import("states.zig").State;
+const Stream = @import("stream.zig").Stream;
 
 pub const ServerAutomaton = struct {
     allocator: *Allocator,
@@ -17,12 +17,12 @@ pub const ServerAutomaton = struct {
         return ServerAutomaton{ .allocator = allocator, .state = State.Idle };
     }
 
-    pub fn nextEvent(self: *ServerAutomaton, buffer: *Buffer) EventError!Event {
+    pub fn nextEvent(self: *ServerAutomaton, stream: *Stream) EventError!Event {
         var event: Event = undefined;
         switch(self.state) {
-            .Idle => event = try self.nextEventWhenIdle(buffer),
-            .SendBody => event = try self.nextEventWhenSendingBody(buffer),
-            .Done => event = self.nextEventWhenDone(buffer),
+            .Idle => event = try self.nextEventWhenIdle(stream),
+            .SendBody => event = try self.nextEventWhenSendingBody(stream),
+            .Done => event = self.nextEventWhenDone(stream),
             else => {
                 self.state = .Error;
                 event = .ConnectionClosed;
@@ -33,18 +33,18 @@ pub const ServerAutomaton = struct {
         return event;
     }
 
-    fn nextEventWhenIdle(self: *ServerAutomaton, buffer: *Buffer) EventError!Event {
-        var response = try Response.parse(buffer, self.allocator);
+    fn nextEventWhenIdle(self: *ServerAutomaton, stream: *Stream) EventError!Event {
+        var response = try Response.parse(stream, self.allocator);
         self.contentLength = try response.getContentLength();
         return Event{ .Response = response };
     }
 
-    fn nextEventWhenSendingBody(self: *ServerAutomaton, buffer: *Buffer) EventError!Event {
-        var data = try Data.parse(buffer, self.contentLength);
+    fn nextEventWhenSendingBody(self: *ServerAutomaton, stream: *Stream) EventError!Event {
+        var data = try Data.parse(stream, self.contentLength);
         return Event{ .Data = data };
     }
 
-    fn nextEventWhenDone(self: *ServerAutomaton, buffer: *Buffer) Event {
+    fn nextEventWhenDone(self: *ServerAutomaton, stream: *Stream) Event {
         return .EndOfMessage;
     }
 

@@ -95,10 +95,7 @@ test "Send - When Sending Body - Can send a Data event" {
 }
 
 test "Send - When Sending Body - Can send a EndOfMessage event" {
-    var buffer: [1024]u8 = undefined;
-    const allocator = &std.heap.FixedBufferAllocator.init(&buffer).allocator;
-
-    var client = ClientAutomaton.init(allocator);
+    var client = ClientAutomaton.init(testing.allocator);
     client.state = .SendBody;
 
     var bytesToSend = try client.send(.EndOfMessage);
@@ -107,10 +104,7 @@ test "Send - When Sending Body - Can send a EndOfMessage event" {
 }
 
 test "Send - When Sending Body - Returns a LocalProtocolError on any other events" {
-    var buffer: [1024]u8 = undefined;
-    const allocator = &std.heap.FixedBufferAllocator.init(&buffer).allocator;
-
-    var client = ClientAutomaton.init(allocator);
+    var client = ClientAutomaton.init(testing.allocator);
     client.state = .SendBody;
 
     var headers = [_]HeaderField{HeaderField{ .name = "Host", .value = "httpbin.org" }};
