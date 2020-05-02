@@ -9,13 +9,77 @@ const Headers = @import("events.zig").Headers;
 const HeaderField = @import("events.zig").HeaderField;
 const Request = @import("events.zig").Request;
 const State = @import("states.zig").State;
+const Stream = @import("stream.zig").Stream;
 
 pub const ClientAutomaton = struct {
     allocator: *Allocator,
+    contentLength: usize = 0,
     state: State,
 
     pub fn init(allocator: *Allocator) ClientAutomaton {
         return ClientAutomaton{ .allocator = allocator, .state = State.Idle };
+    }
+
+    pub fn nextEvent(self: *ClientAutomaton, stream: *Stream) EventError!Event {
+        var event: Event = undefined;
+        switch(self.state) {
+            .Idle => event = try self.nextEventWhenIdle(stream),
+            .SendBody => event = try self.nextEventWhenSendingBody(stream),
+            .Done => event = self.nextEventWhenDone(stream),
+            else => {
+                self.state = .Error;
+                event = .ConnectionClosed;
+            }
+        }
+
+        self.changeState(event);
+        return event;
+    }
+
+    fn nextEventWhenIdle(self: *ClientAutomaton, stream: *Stream) EventError!Event {
+        var request = try Request.parse(stream, self.allocator);
+        self.contentLength = try Headers.getContentLength(request.headers);
+        return Event{ .Request = request };
+    }
+
+    fn nextEventWhenSendingBody(self: *ClientAutomaton, stream: *Stream) EventError!Event {
+        var data = try Data.parse(stream, self.contentLength);
+        return Event{ .Data = data };
+    }
+
+    fn nextEventWhenDone(self: *ClientAutomaton, stream: *Stream) Event {
+        return .EndOfMessage;
+    }
+
+    pub fn changeState(self: *ClientAutomaton, event: Event) void {
+        switch (self.state) {
+            .Idle => {
+                switch (event) {
+                    .ConnectionClosed => self.state = .Closed,
+                    .Request => {
+                        if (self.contentLength == 0) {
+                            self.state = .Done;
+                        } else {
+                            self.state = .SendBody;
+                        }
+                    },
+                    else => self.state = .Error,
+                }
+            },
+            .SendBody => {
+                switch (event) {
+                    .Data => self.state = .Done,
+                    else => self.state = .Error,
+                }
+            },
+            .Done => {
+                switch (event) {
+                    .ConnectionClosed => self.state = .Closed,
+                    else => self.state = .Error,
+                }
+            },
+            else => self.state = .Error,
+        }
     }
 
     pub fn send(self: *ClientAutomaton, event: Event) EventError![]const u8 {

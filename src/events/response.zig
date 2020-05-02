@@ -38,21 +38,6 @@ pub const Response = struct {
 
         return StatusLine{ .statusCode = statusCode };
     }
-
-    pub fn getContentLength(self: *Response) EventError!usize {
-        var rawContentLength: []const u8 = "0";
-        for (self.headers) |field| {
-            if (std.mem.eql(u8, field.name, "content-length")) {
-                rawContentLength = field.value;
-            }
-        }
-
-        const contentLength = std.fmt.parseInt(usize, rawContentLength, 10) catch {
-            return error.RemoteProtocolError;
-        };
-
-        return contentLength;
-    }
 };
 
 const testing = std.testing;
@@ -106,26 +91,4 @@ test "Parse" {
     testing.expect(std.mem.eql(u8, response.headers[0].value, "Apache"));
     testing.expect(std.mem.eql(u8, response.headers[1].name, "content-length"));
     testing.expect(std.mem.eql(u8, response.headers[1].value, "12"));
-}
-
-test "Get Content Length" {
-    var headers = [_]HeaderField{
-        HeaderField{ .name = "content-length", .value = "12" },
-    };
-    var response = Response{ .statusCode = 200, .headers = &headers };
-
-    var contentLength = try response.getContentLength();
-
-    testing.expect(contentLength == 12);
-}
-
-test "Get Content Length - When value is not a integer - Returns RemoteProtocolError" {
-    var headers = [_]HeaderField{
-        HeaderField{ .name = "content-length", .value = "xxx" },
-    };
-    var response = Response{ .statusCode = 200, .headers = &headers };
-
-    var contentLength = response.getContentLength();
-
-    testing.expectError(error.RemoteProtocolError, contentLength);
 }

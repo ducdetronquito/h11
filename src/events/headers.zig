@@ -107,6 +107,21 @@ pub const Headers = struct {
 
         return buffer.toOwnedSlice();
     }
+
+    pub fn getContentLength(headers: []HeaderField) EventError!usize {
+        var rawContentLength: []const u8 = "0";
+        for (headers) |field| {
+            if (std.mem.eql(u8, field.name, "content-length")) {
+                rawContentLength = field.value;
+            }
+        }
+
+        const contentLength = std.fmt.parseInt(usize, rawContentLength, 10) catch {
+            return error.RemoteProtocolError;
+        };
+
+        return contentLength;
+    }
 };
 
 const testing = std.testing;
@@ -195,4 +210,33 @@ test "Serialize" {
     defer testing.allocator.free(result);
 
     testing.expect(std.mem.eql(u8, result, "Host: httpbin.org\r\nServer: Apache\r\n\r\n"));
+}
+
+test "Get Content Length" {
+    var headers = [_]HeaderField{
+        HeaderField{ .name = "content-length", .value = "12" },
+    };
+
+    var contentLength = try Headers.getContentLength(&headers);
+
+    testing.expect(contentLength == 12);
+}
+
+
+test "Get Content Length - Defaults to 0" {
+    var headers = [_]HeaderField{};
+
+    var contentLength = try Headers.getContentLength(&headers);
+
+    testing.expect(contentLength == 0);
+}
+
+test "Get Content Length - When value is not a integer - Returns RemoteProtocolError" {
+    var headers = [_]HeaderField{
+        HeaderField{ .name = "content-length", .value = "xxx" },
+    };
+
+    var contentLength = Headers.getContentLength(&headers);
+
+    testing.expectError(error.RemoteProtocolError, contentLength);
 }

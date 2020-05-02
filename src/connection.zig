@@ -45,6 +45,7 @@ fn Connection(comptime L: type, comptime R: type) type {
 }
 
 pub const Client = Connection(ClientAutomaton, ServerAutomaton);
+pub const Server = Connection(ServerAutomaton, ClientAutomaton);
 
 const testing = std.testing;
 

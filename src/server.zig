@@ -4,6 +4,7 @@ const Data = @import("events.zig").Data;
 const Event = @import("events.zig").Event;
 const EventError = @import("events.zig").EventError;
 const EventTag = @import("events.zig").EventTag;
+const Headers = @import("events.zig").Headers;
 const Response = @import("events.zig").Response;
 const State = @import("states.zig").State;
 const Stream = @import("stream.zig").Stream;
@@ -35,7 +36,7 @@ pub const ServerAutomaton = struct {
 
     fn nextEventWhenIdle(self: *ServerAutomaton, stream: *Stream) EventError!Event {
         var response = try Response.parse(stream, self.allocator);
-        self.contentLength = try response.getContentLength();
+        self.contentLength = try Headers.getContentLength(response.headers);
         return Event{ .Response = response };
     }
 
