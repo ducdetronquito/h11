@@ -66,7 +66,7 @@ test "Send - When Idle - Can send a Request event" {
     var client = ClientAutomaton.init(testing.allocator);
 
     var headers = [_]HeaderField{HeaderField{ .name = "Host", .value = "httpbin.org" }};
-    var request = Request{ .method = "GET", .target = "/xml", .headers = headers[0..] };
+    var request = Request{ .method = "GET", .target = "/xml", .headers = &headers };
 
     var bytesToSend = try client.send(Event{ .Request = request });
     defer testing.allocator.free(bytesToSend);
@@ -108,7 +108,7 @@ test "Send - When Sending Body - Returns a LocalProtocolError on any other event
     client.state = .SendBody;
 
     var headers = [_]HeaderField{HeaderField{ .name = "Host", .value = "httpbin.org" }};
-    var request = Request{ .method = "GET", .target = "/xml", .headers = headers[0..] };
+    var request = Request{ .method = "GET", .target = "/xml", .headers = &headers };
 
     var bytesToSend = client.send(Event{ .Request = request });
     testing.expectError(error.LocalProtocolError, bytesToSend);

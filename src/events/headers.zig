@@ -21,31 +21,8 @@ pub const HeaderField = struct {
 };
 
 pub const Headers = struct {
-    allocator: *Allocator,
-    fields: []HeaderField,
 
-    pub fn init(allocator: *Allocator) Headers {
-        return Headers{ .allocator = allocator, .fields = &[_]HeaderField{} };
-    }
-
-    /// Headers takes ownership of the passed in slice. The slice must have been
-    /// allocated with `allocator`.
-    pub fn fromOwnedSlice(allocator: *Allocator, fields: []HeaderField) Headers {
-        return Headers{ .allocator = allocator, .fields = fields };
-    }
-
-    pub fn deinit(self: *Headers) void {
-        self.allocator.free(self.fields);
-    }
-
-    /// The caller owns the returned memory. Headers becomes empty.
-    pub fn toOwnedSlice(self: *Headers) []HeaderField {
-        const result = self.allocator.shrink(self.fields, self.fields.len);
-        self.* = init(self.allocator);
-        return result;
-    }
-
-    pub fn parse(allocator: *Allocator, stream: *Stream) EventError!Headers{
+    pub fn parse(allocator: *Allocator, stream: *Stream) EventError![]HeaderField{
         var fields = ArrayList(HeaderField).init(allocator);
         errdefer fields.deinit();
 
@@ -60,7 +37,7 @@ pub const Headers = struct {
             try fields.append(field);
         }
 
-        return Headers.fromOwnedSlice(allocator, fields.toOwnedSlice());
+        return fields.toOwnedSlice();
     }
 
     fn parseHeaderField(data: []u8) EventError!HeaderField {
@@ -200,12 +177,12 @@ test "Parse" {
     var stream = Stream.init(bytes);
 
     var headers = try Headers.parse(testing.allocator, &stream);
-    defer headers.deinit();
+    defer testing.allocator.free(headers);
 
-    testing.expect(std.mem.eql(u8, headers.fields[0].name, "server"));
-    testing.expect(std.mem.eql(u8, headers.fields[0].value, "Apache"));
-    testing.expect(std.mem.eql(u8, headers.fields[1].name, "content-length"));
-    testing.expect(std.mem.eql(u8, headers.fields[1].value, "51"));
+    testing.expect(std.mem.eql(u8, headers[0].name, "server"));
+    testing.expect(std.mem.eql(u8, headers[0].value, "Apache"));
+    testing.expect(std.mem.eql(u8, headers[1].name, "content-length"));
+    testing.expect(std.mem.eql(u8, headers[1].value, "51"));
 }
 
 test "Serialize" {
@@ -214,7 +191,7 @@ test "Serialize" {
         HeaderField{ .name = "Server", .value = "Apache" },
     };
 
-    var result = try Headers.serialize(testing.allocator, headers[0..]);
+    var result = try Headers.serialize(testing.allocator, &headers);
     defer testing.allocator.free(result);
 
     testing.expect(std.mem.eql(u8, result, "Host: httpbin.org\r\nServer: Apache\r\n\r\n"));

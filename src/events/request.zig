@@ -41,8 +41,11 @@ pub const Request = struct {
 const testing = std.testing;
 
 test "Serialize" {
-    var headers = [_]HeaderField{HeaderField{ .name = "Host", .value = "httpbin.org" }};
-    var request = Request{ .method = "GET", .target = "/xml", .headers = headers[0..] };
+    var headers = [_]HeaderField{
+        HeaderField{ .name = "Host", .value = "httpbin.org" },
+    };
+
+    var request = Request{ .method = "GET", .target = "/xml", .headers = &headers };
 
     var result = try request.serialize(testing.allocator);
     defer testing.allocator.free(result);
