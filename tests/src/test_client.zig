@@ -13,7 +13,7 @@ test "Client - Send Get request and read response." {
         h11.HeaderField{ .name = "User-Agent", .value = "curl/7.55.1" },
         h11.HeaderField{ .name = "Accept", .value = "*/*" },
     };
-    var request = h11.Request{ .method = "GET", .target = "/json", .headers = headers[0..] };
+    var request = h11.Request{ .method = "GET", .target = "/json", .headers = &headers };
 
     var requestBytes = try client.send(h11.Event{ .Request = request });
     defer std.testing.allocator.free(requestBytes);
@@ -78,12 +78,12 @@ test "Client - Send Get request and read response." {
     var event = try client.nextEvent();
     switch (event) {
         .Response => |*response| {
-            defer response.deinit();
+            defer testing.allocator.free(response.headers);
             testing.expect(response.statusCode == 200);
-            testing.expect(std.mem.eql(u8, response.headers.fields[0].name, "date"));
-            testing.expect(std.mem.eql(u8, response.headers.fields[0].value, "Mon, 13 Apr 2020 08:51:00 GMT"));
-            testing.expect(std.mem.eql(u8, response.headers.fields[6].name, "access-control-allow-credentials"));
-            testing.expect(std.mem.eql(u8, response.headers.fields[6].value, "true"));
+            testing.expect(std.mem.eql(u8, response.headers[0].name, "date"));
+            testing.expect(std.mem.eql(u8, response.headers[0].value, "Mon, 13 Apr 2020 08:51:00 GMT"));
+            testing.expect(std.mem.eql(u8, response.headers[6].name, "access-control-allow-credentials"));
+            testing.expect(std.mem.eql(u8, response.headers[6].value, "true"));
         },
         else => unreachable,
     }

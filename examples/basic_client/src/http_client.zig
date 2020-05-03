@@ -33,7 +33,7 @@ pub const HttpClient = struct {
             h11.HeaderField{ .name = "User-Agent", .value = "h11/0.1.0" },
             h11.HeaderField{ .name = "Accept", .value = "*/*" },
         };
-        var request = h11.Request{ .method = "GET", .target = _url.target, .headers = headers[0..] };
+        var request = h11.Request{ .method = "GET", .target = _url.target, .headers = &headers };
 
         return try HttpClient.send(allocator, _url.host, request);
     }
@@ -61,7 +61,7 @@ pub const HttpClient = struct {
             switch (event) {
                 .Response => |*responseEvent| {
                     response.statusCode = responseEvent.statusCode;
-                    response.headers = responseEvent.headers.toOwnedSlice();
+                    response.headers = responseEvent.headers;
                 },
                 .Data => |*dataEvent| {
                     response.body = dataEvent.body;

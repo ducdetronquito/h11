@@ -13,10 +13,6 @@ pub const Stream = struct {
         return Stream{ .cursor = 0, .data = data };
     }
 
-    pub fn fromSliceConst(data: []const u8) Stream {
-        return Stream.init(data);
-    }
-
     pub fn readLine(self: *Stream) StreamError![]u8 {
         const data = self.data;
         var start = self.cursor;
@@ -40,10 +36,24 @@ pub const Stream = struct {
         }
     }
 
-    pub fn read(self: *Stream, size: usize) []u8 {
-        const end = std.math.min(size, self.len());
-        const result = self.data[self.cursor..self.cursor + end];
-        self.cursor += size;
+    pub fn readUntil(self: *Stream, sentinel: u8) ![]u8 {
+        var data = self.data;
+        var start = self.cursor;
+        var cursor = self.cursor;
+
+        while(cursor < data.len) {
+            if (data[cursor] == sentinel) {
+                self.cursor = cursor + 1;
+                return data[start..cursor];
+            }
+            cursor += 1;
+        }
+        return error.EndOfStream;
+    }
+
+    pub fn read(self: *Stream) []u8 {
+        const result = self.data[self.cursor..];
+        self.cursor += result.len;
         return result;
     }
 
@@ -79,7 +89,7 @@ test "ReadLine - Read line returns the entire stream" {
 test "ReadLine - Read line returns the remaining stream" {
     var content = "HTTP/1.1 200 OK\r\n".*;
     var stream = Stream.init(&content);
-    _ = stream.read(9);
+    stream.cursor = 9;
 
     var line = try stream.readLine();
 
@@ -99,11 +109,19 @@ test "ReadLine - Read lines one by one " {
     testing.expect(std.mem.eql(u8, thirdLine, "Content-Length: 51"));
 }
 
-test "Read - Success " {
+test "ReadUntil - Success" {
     var content = "HTTP/1.1 200 OK".*;
     var stream = Stream.init(&content);
 
-    var httpVersion = stream.read(8);
-
+    var httpVersion = try stream.readUntil(' ');
     testing.expect(std.mem.eql(u8, httpVersion, "HTTP/1.1"));
+}
+
+test "ReadUntil - When sentinel character is not found - Return EndOfStream error" {
+    var content = "HTTP/1.1 200 OK".*;
+    var stream = Stream.init(&content);
+
+    var httpVersion = stream.readUntil('x');
+    testing.expectError(error.EndOfStream, httpVersion);
+    testing.expect(stream.len() == 15);
 }

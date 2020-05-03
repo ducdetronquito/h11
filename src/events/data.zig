@@ -14,7 +14,7 @@ pub const Data = struct {
             return error.RemoteProtocolError;
         }
 
-        return Data{ .body = stream.read(contentLength) };
+        return Data{ .body = stream.read() };
     }
 };
 

@@ -11,25 +11,15 @@ pub const StatusLine = struct {
 };
 
 pub const Response = struct {
-    allocator: *Allocator,
     statusCode: i32,
-    headers: Headers,
-
-
-    pub fn init(allocator: *Allocator, statusCode: i32, headers: Headers) Response {
-        return Response{ .allocator = allocator, .statusCode = statusCode, .headers = headers };
-    }
-
-    pub fn deinit(self: *Response) void {
-        self.headers.deinit();
-    }
+    headers: []HeaderField,
 
     pub fn parse(stream: *Stream, allocator: *Allocator) EventError!Response {
         var statusLine = try Response.parseStatusLine(stream);
 
         var headers = try Headers.parse(allocator, stream);
 
-        return Response.init(allocator, statusLine.statusCode, headers);
+        return Response{ .statusCode = statusLine.statusCode, .headers = headers };
     }
 
     pub fn parseStatusLine(stream: *Stream) EventError!StatusLine {
@@ -47,21 +37,6 @@ pub const Response = struct {
         const statusCode = std.fmt.parseInt(i32, line[9..12], 10) catch return error.RemoteProtocolError;
 
         return StatusLine{ .statusCode = statusCode };
-    }
-
-    pub fn getContentLength(self: *Response) EventError!usize {
-        var rawContentLength: []const u8 = "0";
-        for (self.headers.fields) |field| {
-            if (std.mem.eql(u8, field.name, "content-length")) {
-                rawContentLength = field.value;
-            }
-        }
-
-        const contentLength = std.fmt.parseInt(usize, rawContentLength, 10) catch {
-            return error.RemoteProtocolError;
-        };
-
-        return contentLength;
     }
 };
 
@@ -109,34 +84,11 @@ test "Parse" {
     var stream = Stream.init(&content);
 
     var response = try Response.parse(&stream, testing.allocator);
-    defer response.deinit();
+    defer testing.allocator.free(response.headers);
 
     testing.expect(response.statusCode == 200);
-    testing.expect(response.headers.fields.len == 2);
-}
-
-test "Get Content Length" {
-    var fields = ArrayList(HeaderField).init(testing.allocator);
-    defer fields.deinit();
-    try fields.append(HeaderField{ .name = "content-length", .value = "12" });
-    var headers = Headers.fromOwnedSlice(testing.allocator, fields.toOwnedSlice());
-    var response = Response.init(testing.allocator, 200, headers);
-    defer response.deinit();
-
-    var contentLength = try response.getContentLength();
-
-    testing.expect(contentLength == 12);
-}
-
-test "Get Content Length - When value is not a integer - Returns RemoteProtocolError" {
-    var fields = ArrayList(HeaderField).init(testing.allocator);
-    defer fields.deinit();
-    try fields.append(HeaderField{ .name = "content-length", .value = "XXX" });
-    var headers = Headers.fromOwnedSlice(testing.allocator, fields.toOwnedSlice());
-    var response = Response.init(testing.allocator, 200, headers);
-    defer response.deinit();
-
-    var contentLength = response.getContentLength();
-
-    testing.expectError(error.RemoteProtocolError, contentLength);
+    testing.expect(std.mem.eql(u8, response.headers[0].name, "server"));
+    testing.expect(std.mem.eql(u8, response.headers[0].value, "Apache"));
+    testing.expect(std.mem.eql(u8, response.headers[1].name, "content-length"));
+    testing.expect(std.mem.eql(u8, response.headers[1].value, "12"));
 }
