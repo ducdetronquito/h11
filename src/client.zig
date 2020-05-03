@@ -23,8 +23,18 @@ pub const ClientAutomaton = struct {
     pub fn nextEvent(self: *ClientAutomaton, stream: *Stream) EventError!Event {
         var event: Event = undefined;
         switch(self.state) {
-            .Idle => event = try self.nextEventWhenIdle(stream),
-            .SendBody => event = try self.nextEventWhenSendingBody(stream),
+            .Idle => {
+                event = self.nextEventWhenIdle(stream) catch |err| {
+                    self.state = .Error;
+                    return err;
+                };
+            },
+            .SendBody => {
+                event = self.nextEventWhenSendingBody(stream) catch |err| {
+                    self.state = .Error;
+                    return err;
+                };
+            },
             .Done => event = self.nextEventWhenDone(stream),
             else => {
                 self.state = .Error;
@@ -38,7 +48,10 @@ pub const ClientAutomaton = struct {
 
     fn nextEventWhenIdle(self: *ClientAutomaton, stream: *Stream) EventError!Event {
         var request = try Request.parse(stream, self.allocator);
-        self.contentLength = try Headers.getContentLength(request.headers);
+        self.contentLength = Headers.getContentLength(request.headers) catch |err| {
+            self.allocator.free(request.headers);
+            return err;
+        };
         return Event{ .Request = request };
     }
 
@@ -55,7 +68,6 @@ pub const ClientAutomaton = struct {
         switch (self.state) {
             .Idle => {
                 switch (event) {
-                    .ConnectionClosed => self.state = .Closed,
                     .Request => {
                         if (self.contentLength == 0) {
                             self.state = .Done;
@@ -176,5 +188,53 @@ test "Send - When Sending Body - Returns a LocalProtocolError on any other event
 
     var bytesToSend = client.send(Event{ .Request = request });
     testing.expectError(error.LocalProtocolError, bytesToSend);
+    testing.expect(client.state == .Error);
+}
+
+test "NextEvent - Parse a request into events" {
+    var content = "GET /json HTTP/1.1\r\nHost: httpbin.org\r\nUser-Agent: curl/7.55.1\r\nAccept: */*\r\n\r\n".*;
+    var stream = Stream.init(&content);
+
+    var client = ClientAutomaton.init(testing.allocator);
+
+    var event = try client.nextEvent(&stream);
+    testing.expect(event == EventTag.Request);
+    switch(event) {
+        .Request => testing.allocator.free(event.Request.headers),
+        else => unreachable,
+    }
+
+    event = try client.nextEvent(&stream);
+    testing.expect(event == EventTag.EndOfMessage);
+}
+
+test "NextEvent - Parse a request with payload into events" {
+    var content = "POST /txt HTTP/1.1\r\nHost: httpbin.org\r\nContent-Length: 12\r\n\r\nHello World!".*;
+    var stream = Stream.init(&content);
+
+    var client = ClientAutomaton.init(testing.allocator);
+
+    var event = try client.nextEvent(&stream);
+    testing.expect(event == EventTag.Request);
+    switch(event) {
+        .Request => testing.allocator.free(event.Request.headers),
+        else => unreachable,
+    }
+
+    event = try client.nextEvent(&stream);
+    testing.expect(event == EventTag.Data);
+
+    event = try client.nextEvent(&stream);
+    testing.expect(event == EventTag.EndOfMessage);
+}
+
+test "NextEvent - Transitions to Error state when returning a RemoteProtocolError" {
+    var content = "GET /json HTTP/1.1\r\nContent-Length: NOT_A_NUMBER\r\n\r\n".*;
+    var stream = Stream.init(&content);
+
+    var client = ClientAutomaton.init(testing.allocator);
+
+    var event = client.nextEvent(&stream);
+    testing.expectError(EventError.RemoteProtocolError, event);
     testing.expect(client.state == .Error);
 }
