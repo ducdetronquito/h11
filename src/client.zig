@@ -24,15 +24,21 @@ pub const ClientAutomaton = struct {
         var event: Event = undefined;
         switch(self.state) {
             .Idle => {
-                event = self.nextEventWhenIdle(stream) catch |err| {
-                    self.state = .Error;
-                    return err;
+                event = self.nextEventWhenIdle(stream) catch |err| switch (err) {
+                    error.NeedData => return err,
+                    else => {
+                        self.state = .Error;
+                        return err;
+                    }
                 };
             },
             .SendBody => {
-                event = self.nextEventWhenSendingBody(stream) catch |err| {
-                    self.state = .Error;
-                    return err;
+                event = self.nextEventWhenSendingBody(stream) catch |err| switch (err) {
+                    error.NeedData => return err,
+                    else => {
+                        self.state = .Error;
+                        return err;
+                    }
                 };
             },
             .Done => event = self.nextEventWhenDone(stream),
