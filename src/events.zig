@@ -4,6 +4,7 @@ pub const HeaderField = @import("events/headers.zig").HeaderField;
 pub const Headers = @import("events/headers.zig").Headers;
 pub const Request = @import("events/request.zig").Request;
 pub const Response = @import("events/response.zig").Response;
+pub const StatusCode = @import("events/response.zig").StatusCode;
 
 pub const EventTag = enum {
     ConnectionClosed,
