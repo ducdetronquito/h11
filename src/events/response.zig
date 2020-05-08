@@ -36,6 +36,32 @@ pub const Response = struct {
 
         return StatusLine{ .statusCode = @intToEnum(StatusCode, statusCode) };
     }
+
+    /// The caller owns the returned memory.
+    pub fn serialize(self: Response, allocator: *Allocator) EventError![]const u8 {
+        var buffer = ArrayList(u8).init(allocator);
+
+        var statusLine = try self.serializeStatusLine(allocator);
+        defer allocator.free(statusLine);
+        try buffer.appendSlice(statusLine);
+
+        var headers = try Headers.serialize(allocator, self.headers);
+        defer allocator.free(headers);
+
+        try buffer.appendSlice(headers);
+
+        return buffer.toOwnedSlice();
+    }
+
+    fn serializeStatusLine(self: Response, allocator: *Allocator) AllocationError![]const u8 {
+        var buffer = ArrayList(u8).init(allocator);
+        try buffer.appendSlice("HTTP/1.1 ");
+        try buffer.appendSlice(self.statusCode.toBytes());
+        try buffer.append(' ');
+        try buffer.appendSlice(self.statusCode.reasonPhrase());
+        try buffer.appendSlice("\r\n");
+        return buffer.toOwnedSlice();
+    }
 };
 
 pub const StatusLine = struct {
@@ -245,4 +271,14 @@ test "Parse" {
     testing.expect(std.mem.eql(u8, response.headers[0].value, "Apache"));
     testing.expect(std.mem.eql(u8, response.headers[1].name, "content-length"));
     testing.expect(std.mem.eql(u8, response.headers[1].value, "12"));
+}
+
+test "Serialize" {
+    var headers = [_]HeaderField{HeaderField{ .name = "Content-Length", .value = "0" }};
+    var response = Response{ .statusCode = .Ok, .headers = &headers };
+
+    var result = try response.serialize(testing.allocator);
+    defer testing.allocator.free(result);
+
+    testing.expect(std.mem.eql(u8, result, "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"));
 }
