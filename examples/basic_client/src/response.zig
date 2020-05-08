@@ -4,7 +4,7 @@ const h11 = @import("h11");
 
 pub const Response = struct {
     allocator: *Allocator,
-    statusCode: i32,
+    statusCode: h11.StatusCode,
     headers: []h11.HeaderField,
     body: []const u8,
     // `buffer` stores the bytes read from the socket.
@@ -13,7 +13,7 @@ pub const Response = struct {
     buffer: []const u8,
 
     pub fn init(allocator: *Allocator) Response {
-        return Response{ .allocator = allocator, .statusCode = 0, .headers = &[_]h11.HeaderField{}, .body = &[_]u8{}, .buffer = &[_]u8{} };
+        return Response{ .allocator = allocator, .statusCode = .ImATeapot, .headers = &[_]h11.HeaderField{}, .body = &[_]u8{}, .buffer = &[_]u8{} };
     }
 
     pub fn deinit(self: *Response) void {
