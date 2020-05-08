@@ -12,5 +12,4 @@ language: c
 
 script:
     - zig build test
-    - cd tests/ && zig build test
 
