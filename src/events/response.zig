@@ -33,7 +33,6 @@ pub const Response = struct {
 
         const statusCode = std.fmt.parseInt(i32, line[9..12], 10) catch return error.RemoteProtocolError;
 
-
         return StatusLine{ .statusCode = @intToEnum(StatusCode, statusCode) };
     }
 
@@ -115,9 +114,10 @@ pub const StatusCode = enum(i32) {
     GatewayTimeout = 504,
     HttpVersionNotSupported = 505,
     NetworkAuthenticationRequired = 511,
+    _, // Network status codes may be extensive or undefined
 
     pub fn reasonPhrase(self: StatusCode) []const u8 {
-        return switch(self) {
+        return switch (self) {
             .Continue => "Continue",
             .SwitchingProtocol => "Switching Protocol",
             .Ok => "OK",
@@ -167,9 +167,8 @@ pub const StatusCode = enum(i32) {
         };
     }
 
-
     pub fn toBytes(self: StatusCode) []const u8 {
-        return switch(self) {
+        return switch (self) {
             .Continue => "100",
             .SwitchingProtocol => "101",
             .Ok => "200",
