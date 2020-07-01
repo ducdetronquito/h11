@@ -1,6 +1,7 @@
 const Header = @import("headers.zig").Header;
 const ParsingError = @import("errors.zig").ParsingError;
 const readLine = @import("utils.zig").readLine;
+const readVersion = @import("utils.zig").readVersion;
 const std = @import("std");
 
 pub const Request = struct {
@@ -103,13 +104,6 @@ fn readUri(buffer: []const u8) ParsingError![]const u8 {
     return error.Invalid;
 }
 
-fn readVersion(buffer: []const u8) ParsingError![]const u8 {
-    if (std.mem.eql(u8, buffer, "HTTP/1.1")) {
-        return buffer;
-    }
-
-    return error.Invalid;
-}
 
 const expect = std.testing.expect;
 const expectError = std.testing.expectError;
