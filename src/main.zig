@@ -1,2 +1,1 @@
-usingnamespace @import("events.zig");
-usingnamespace @import("connection.zig");
+pub const Request = @import("request.zig").Request;
