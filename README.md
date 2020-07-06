@@ -1,23 +1,88 @@
 # h11
 
-I/O free HTTP/1.1 implementation for Zig inspired by [hyper/h11](https://github.com/python-hyper/h11)
+An HTTP/1.1 parser inspired by [httparse](https://github.com/seanmonstar/httparse).
 
 [![Build Status](https://api.travis-ci.org/ducdetronquito/h11.svg?branch=master)](https://travis-ci.org/ducdetronquito/h11) [![License](https://img.shields.io/badge/license-public%20domain-ff69b4.svg)](https://github.com/ducdetronquito/h11#license) [![Requirements](https://img.shields.io/badge/zig-0.6.0-orange)](https://ziglang.org/)
 
 ## Usage
 
-Broadly speaking, *h11* workflow looks like this:
+### Request Parser
 
-1. Create an `h11.Client` object to track the state of a single HTTP/1.1 connection.
-2. To send a request, you need to serialize a `Request` event with `var bytes = client.send(...)` and write those bytes to the network.
-3. To receive a response, you read bytes off the network and pass them to `client.receive_data(...)`
-4. Then, retrieve one or more HTTP "events" by calling `client.nextEvent()` until it returns an `EndOfMessage` event or an error.
+```zig
+const h11 = @import("h11");
+
+var headers: [10]Header = undefined;
+var buffer = "GET /index.html HTTP/1.1\r\nHost: example.domain\r\n\r\n".*;
+
+var request = try h11.Request.parse(&buffer, &headers);
+```
+
+### Response parser
+
+```zig
+const h11 = @import("h11");
+
+var headers: [10]Header = undefined;
+var buffer = "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\n".*;
+
+var response = try h11.Response.parse(&buffer, &headers);
+```
+
+### Structures
+
+- `Request`: A parsed request
+- `Response`: A parsed response
+- `Header`: A parsed header
 
 
-You can find a basic HTTP client written with *h11* [here](https://github.com/ducdetronquito/h11/tree/master/examples/basic_client).
+### Errors
 
-In the end, every concepts of *h11* are taken straight from the original implementation in python: [python-hyper/h11](https://github.com/python-hyper/h11).
-Furthermore, a really well written documentation is available [here](https://h11.readthedocs.io).
+The `parse` function of `Request` and `Response` can return the following errors.
+
+#### Incomplete
+
+Returned when the parsed buffer does not contain enough data to return a complete `Request` or `Response`.
+
+```zig
+const expectError = @import("std").testing.expectError;
+const h11 = @import("h11");
+
+var headers: [10]Header = undefined;
+var buffer = "GET /index.html HTTP/1.1\r\nHost".*;
+
+var request = h11.Request.parse(&buffer, &headers);
+expectError(error.Incomplete, request);
+```
+
+#### Invalid
+
+Returned when the parsed buffer does not comply with [RFC 7230](https://tools.ietf.org/html/rfc7230).
+
+```zig
+const expectError = @import("std").testing.expectError;
+const h11 = @import("h11");
+
+var headers: [10]Header = undefined;
+var buffer = "I am not a valid HTTP request".*;
+
+var request = h11.Request.parse(&buffer, &headers);
+expectError(error.Invalid, request);
+```
+
+#### TooManyHeaders
+
+Returned when the buffer contains more headers than the provided `Header` slice can handle.
+
+```zig
+const expectError = @import("std").testing.expectError;
+const h11 = @import("h11");
+
+var headers: [0]Header = undefined;
+var buffer = "GET /index.html HTTP/1.1\r\nHost: example.domain\r\n\r\n".*;
+
+var request = h11.Request.parse(&buffer, &headers);
+expectError(error.TooManyHeaders, request);
+```
 
 ## Requirements
 

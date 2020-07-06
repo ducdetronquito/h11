@@ -1,3 +1,5 @@
-pub const AllocationError = error {
-    OutOfMemory,
+pub const ParsingError = error {
+    Incomplete,
+    Invalid,
+    TooManyHeaders,
 };
