@@ -28,33 +28,33 @@ const expect = std.testing.expect;
 const expectError = std.testing.expectError;
 
 test "readLine - No CRLF - Returns null" {
-    var content = "Hello World!".*;
+    const content = "Hello World!";
 
-    var line = readLine(&content);
+    const line = readLine(content);
 
     expect(line == null);
 }
 
 test "readLine - Success" {
-    var content = "Hello\r\nWorld!".*;
+    const content = "Hello\r\nWorld!";
 
-    var line = readLine(&content);
+    const line = readLine(content);
 
     expect(std.mem.eql(u8, line.?, "Hello"));
 }
 
 test "readVersion - Success" {
-    var content = "HTTP/1.1".*;
+    const content = "HTTP/1.1";
 
-    var version = try readVersion(&content);
+    const version = try readVersion(content);
 
     expect(std.mem.eql(u8, version, "HTTP/1.1"));
 }
 
 test "readVersion - Anything different that HTTP 1.1 - Returns Invalid" {
-    var content = "HTTP/4.2".*;
+    const content = "HTTP/4.2";
 
-    var version = readVersion(&content);
+    const version = readVersion(content);
 
     expectError(error.Invalid, version);
 }

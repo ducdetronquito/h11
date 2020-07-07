@@ -11,15 +11,15 @@ pub const Request = struct {
     headers: []Header,
 
     pub fn parse(buffer: []const u8, headers: []Header) ParsingError!Request {
-        var requestLine = readLine(buffer) orelse return error.Incomplete;
+        const requestLine = readLine(buffer) orelse return error.Incomplete;
 
-        var method = try readToken(requestLine);
+        const method = try readToken(requestLine);
 
-        var target = try readUri(requestLine[method.len + 1..]);
+        const target = try readUri(requestLine[method.len + 1..]);
 
-        var httpVersion = try readVersion(requestLine[method.len + target.len + 2..]);
+        const httpVersion = try readVersion(requestLine[method.len + target.len + 2..]);
 
-        var _headers = try Header.parse(buffer[requestLine.len + 2..], headers);
+        const _headers = try Header.parse(buffer[requestLine.len + 2..], headers);
 
         return Request{
             .headers = _headers,
@@ -110,9 +110,9 @@ const expectError = std.testing.expectError;
 
 test "Parse - Success" {
     var headers: [2]Header = undefined;
-    var content = "GET http://www.example.org/where?q=now HTTP/1.1\r\nUser-Agent: h11\r\nAccept-Language: en\r\n\r\n".*;
+    const content = "GET http://www.example.org/where?q=now HTTP/1.1\r\nUser-Agent: h11\r\nAccept-Language: en\r\n\r\n";
 
-    var request = try Request.parse(&content, &headers);
+    const request = try Request.parse(content, &headers);
 
     expect(std.mem.eql(u8, request.method, "GET"));
     expect(std.mem.eql(u8, request.target, "http://www.example.org/where?q=now"));
@@ -127,54 +127,54 @@ test "Parse - Success" {
 
 test "Parse - When the request line does not ends with a CRLF - Returns Incomplete" {
     var headers: [0]Header = undefined;
-    var content = "GET http://www.example.org/where?q=now HTTP/1.1".*;
+    const content = "GET http://www.example.org/where?q=now HTTP/1.1";
 
-    var request = Request.parse(&content, &headers);
+    const request = Request.parse(content, &headers);
 
     expectError(error.Incomplete, request);
 }
 
 test "Parse - When the method contains an invalid character - Returns Invalid" {
     var headers: [0]Header = undefined;
-    var content = "G\tET http://www.example.org/where?q=now HTTP/1.1\r\n\r\n\r\n".*;
+    const content = "G\tET http://www.example.org/where?q=now HTTP/1.1\r\n\r\n\r\n";
 
-    var request = Request.parse(&content, &headers);
+    const request = Request.parse(content, &headers);
 
     expectError(error.Invalid, request);
 }
 
 test "Parse - When the method and the target are not separated by a whitespace - Returns Invalid" {
     var headers: [0]Header = undefined;
-    var content = "GEThttp://www.example.org/where?q=now HTTP/1.1\r\n\r\n\r\n".*;
+    const content = "GEThttp://www.example.org/where?q=now HTTP/1.1\r\n\r\n\r\n";
 
-    var request = Request.parse(&content, &headers);
+    const request = Request.parse(content, &headers);
 
     expectError(error.Invalid, request);
 }
 
 test "Parse - When the target contains an invalid character - Returns Invalid" {
     var headers: [0]Header = undefined;
-    var content = "GET http://www.\texample.org/where?q=now HTTP/1.1\r\n\r\n\r\n".*;
+    const content = "GET http://www.\texample.org/where?q=now HTTP/1.1\r\n\r\n\r\n";
 
-    var request = Request.parse(&content, &headers);
+    const request = Request.parse(content, &headers);
 
     expectError(error.Invalid, request);
 }
 
 test "Parse - When the target and the http version are not separated by a whitespace - Returns Invalid" {
     var headers: [0]Header = undefined;
-    var content = "GET http://www.example.org/where?q=nowHTTP/1.1\r\n\r\n\r\n".*;
+    const content = "GET http://www.example.org/where?q=nowHTTP/1.1\r\n\r\n\r\n";
 
-    var request = Request.parse(&content, &headers);
+    const request = Request.parse(content, &headers);
 
     expectError(error.Invalid, request);
 }
 
 test "Parse - When the http version is not HTTP 1.1 - Returns Invalid" {
     var headers: [0]Header = undefined;
-    var content = "GET http://www.example.org/where?q=now HTTP/4.2\r\n\r\n\r\n".*;
+    const content = "GET http://www.example.org/where?q=now HTTP/4.2\r\n\r\n\r\n";
 
-    var request = Request.parse(&content, &headers);
+    const request = Request.parse(content, &headers);
 
     expectError(error.Invalid, request);
 }

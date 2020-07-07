@@ -23,9 +23,9 @@ pub const Header = struct {
                 return error.TooManyHeaders;
             }
 
-            var header_name = for (remaining_bytes) |char, i| {
+            const header_name = for (remaining_bytes) |char, i| {
                 if (char == ':') {
-                    var name = remaining_bytes[0..i];
+                    const name = remaining_bytes[0..i];
                     cursor += i + 1;
                     break name;
                 } else if (!is_header_name_token(char)) {
@@ -53,9 +53,9 @@ pub const Header = struct {
             }
 
             remaining_bytes = buffer[cursor..];
-            var header_value = for (remaining_bytes) |char, i| {
+            const header_value = for (remaining_bytes) |char, i| {
                 if (!is_header_value_token(char)) {
-                    var value = remaining_bytes[0..i];
+                    const value = remaining_bytes[0..i];
                     cursor += i;
                     break value;
                 }
@@ -159,20 +159,20 @@ const expect = std.testing.expect;
 const expectError = std.testing.expectError;
 
 test "Parse - Single header - Success" {
-    var content = "Content-Length: 10\r\n\r\n".*;
+    const content = "Content-Length: 10\r\n\r\n";
     var headers: [1]Header = undefined;
 
-    var result = try Header.parse(&content, &headers);
+    var result = try Header.parse(content, &headers);
 
     expect(std.mem.eql(u8, result[0].name, "Content-Length"));
     expect(std.mem.eql(u8, result[0].value, "10"));
 }
 
 test "Parse - Multiple headers - Success" {
-    var content = "Content-Length: 10\r\nServer: Apache\r\n\r\n".*;
+    const content = "Content-Length: 10\r\nServer: Apache\r\n\r\n";
     var headers: [2]Header = undefined;
 
-    var result = try Header.parse(&content, &headers);
+    const result = try Header.parse(content, &headers);
 
     expect(std.mem.eql(u8, result[0].name, "Content-Length"));
     expect(std.mem.eql(u8, result[0].value, "10"));
@@ -182,96 +182,96 @@ test "Parse - Multiple headers - Success" {
 }
 
 test "Parse - Resize header slice - Success" {
-    var content = "Content-Length: 10\r\n\r\n".*;
+    const content = "Content-Length: 10\r\n\r\n";
     var headers: [2]Header = undefined;
 
-    var result = try Header.parse(&content, &headers);
+    const result = try Header.parse(content, &headers);
 
     expect(result.len == 1);
 }
 
 test "Parse - Ignore a missing whitespace between the semicolon and the header value - Success" {
-    var content = "Content-Length:10\r\n\r\n".*;
+    const content = "Content-Length:10\r\n\r\n";
     var headers: [1]Header = undefined;
 
-    var result = try Header.parse(&content, &headers);
+    const result = try Header.parse(content, &headers);
 
     expect(std.mem.eql(u8, result[0].name, "Content-Length"));
     expect(std.mem.eql(u8, result[0].value, "10"));
 }
 
 test "Parse - When the last CRLF after the headers is missing - Returns Incomplete" {
-    var content = "Content-Length: 10\r\n".*;
+    const content = "Content-Length: 10\r\n";
     var headers: [1]Header = undefined;
 
-    var fail = Header.parse(&content, &headers);
+    const fail = Header.parse(content, &headers);
     expectError(error.Incomplete, fail);
 }
 
 test "Parse - When a header's name does not end with a semicolon - Returns Incomplete" {
-    var content = "Content-Length: 10\r\nSe".*;
+    const content = "Content-Length: 10\r\nSe";
     var headers: [2]Header = undefined;
 
-    var fail = Header.parse(&content, &headers);
+    const fail = Header.parse(content, &headers);
     expectError(error.Incomplete, fail);
 }
 
 test "Parse - When a header's value does not exist - Returns Incomplete" {
-    var content = "Content-Length:".*;
+    const content = "Content-Length:";
     var headers: [2]Header = undefined;
 
-    var fail = Header.parse(&content, &headers);
+    const fail = Header.parse(content, &headers);
     expectError(error.Incomplete, fail);
 }
 
 test "Parse - When a header's value does not exist (but the whitespace after the semicolon is here) - Returns Incomplete" {
-    var content = "Content-Length: ".*;
+    const content = "Content-Length: ";
     var headers: [2]Header = undefined;
 
-    var fail = Header.parse(&content, &headers);
+    const fail = Header.parse(content, &headers);
     expectError(error.Incomplete, fail);
 }
 
 test "Parse - When LF is mising after a header's value - Returns Incomplete" {
-    var content = "Content-Length: 10\r".*;
+    const content = "Content-Length: 10\r";
     var headers: [1]Header = undefined;
 
-    var fail = Header.parse(&content, &headers);
+    const fail = Header.parse(content, &headers);
 
     expectError(error.Incomplete, fail);
 }
 
 test "Parse - When parsing more headers than expected - Returns TooManyHeaders" {
-    var content = "Content-Length: 10\r\nServer: Apache\r\n\r\n".*;
+    const content = "Content-Length: 10\r\nServer: Apache\r\n\r\n";
     var headers: [1]Header = undefined;
 
-    var fail = Header.parse(&content, &headers);
+    const fail = Header.parse(content, &headers);
     expectError(error.TooManyHeaders, fail);
 }
 
 test "Parse - Invalid character in the header's name - Returns Invalid" {
-    var content = "Cont(ent-Length: 10\r\n\r\n".*;
+    const content = "Cont(ent-Length: 10\r\n\r\n";
     var headers: [1]Header = undefined;
 
-    var fail = Header.parse(&content, &headers);
+    const fail = Header.parse(content, &headers);
 
     expectError(error.Invalid, fail);
 }
 
 test "Parse - Invalid character in the header's value after the semicolon - Returns Invalid" {
-    var content = "Content-Length:\r\n".*;
+    const content = "Content-Length:\r\n";
     var headers: [1]Header = undefined;
 
-    var fail = Header.parse(&content, &headers);
+    const fail = Header.parse(content, &headers);
 
     expectError(error.Invalid, fail);
 }
 
 test "Parse - Invalid character in the header's value - Returns Invalid" {
-    var content = "Content-Length: 1\r0\r\n".*;
+    const content = "Content-Length: 1\r0\r\n";
     var headers: [1]Header = undefined;
 
-    var fail = Header.parse(&content, &headers);
+    const fail = Header.parse(content, &headers);
 
     expectError(error.Invalid, fail);
 }
