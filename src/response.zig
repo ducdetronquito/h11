@@ -20,6 +20,10 @@ pub const Response = struct {
 
         const statusCode = std.fmt.parseInt(u16, statusLine[9..12], 10) catch return error.Invalid;
 
+        if (statusLine.len > 12 and statusLine[12] != ' ' and statusLine[12] != '\r') {
+            return error.Invalid;
+        }
+
         const _headers = try Header.parse(buffer[statusLine.len + 2..], headers);
 
         return Response{
@@ -98,6 +102,15 @@ test "Parse - When the http version is not HTTP 1.1 - Returns Invalid" {
 test "Parse - When the status code is not an integer - Returns Invalid" {
     var headers: [0]Header = undefined;
     const content = "HTTP/1.1 2xx OK\r\n\r\n\r\n";
+
+    const response = Response.parse(content, &headers);
+
+    expectError(error.Invalid, response);
+}
+
+test "Issue #29: Parse - When the status code is more than 3 digits - Returns Invalid" {
+    var headers: [0]Header = undefined;
+    const content = "HTTP/1.1 1871 OK\r\n\r\n\r\n";
 
     const response = Response.parse(content, &headers);
 
