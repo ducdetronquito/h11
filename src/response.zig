@@ -5,7 +5,7 @@ const readVersion = @import("utils.zig").readVersion;
 const std = @import("std");
 
 pub const Response = struct {
-    statusCode: u8,
+    statusCode: u16,
     httpVersion: []const u8,
     headers: []Header,
 
@@ -18,7 +18,7 @@ pub const Response = struct {
             return error.Invalid;
         }
 
-        const statusCode = std.fmt.parseInt(u8, statusLine[9..12], 10) catch return error.Invalid;
+        const statusCode = std.fmt.parseInt(u16, statusLine[9..12], 10) catch return error.Invalid;
 
         const _headers = try Header.parse(buffer[statusLine.len + 2..], headers);
 
@@ -57,6 +57,15 @@ test "Parse - With missing reason phrase - Success" {
 
     expect(response.statusCode == 200);
     expect(std.mem.eql(u8, response.httpVersion, "HTTP/1.1"));
+}
+
+test "Issue #28: Parse - Wit status code above 255 - Success" {
+    var headers: [0]Header = undefined;
+    const content = "HTTP/1.1 421\r\n\r\n\r\n";
+
+    const response = try Response.parse(content, &headers);
+
+    expect(response.statusCode == 421);
 }
 
 test "Parse - When the response line does not ends with a CRLF - Returns Incomplete" {
