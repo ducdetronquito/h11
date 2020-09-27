@@ -1,4 +1,1 @@
-usingnamespace @import("headers.zig");
-usingnamespace @import("request.zig");
-usingnamespace @import("response.zig");
-usingnamespace @import("utils.zig");
+usingnamespace @import("parsers/tests.zig");
