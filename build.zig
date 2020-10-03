@@ -1,12 +1,17 @@
 const Builder = @import("std").build.Builder;
+const packages = @import("lib/packages.zig");
 
 pub fn build(b: *Builder) void {
     const mode = b.standardReleaseOptions();
     const lib = b.addStaticLibrary("h11", "src/main.zig");
+
+
+    lib.addPackage(packages.http);
     lib.setBuildMode(mode);
     lib.install();
 
     var main_tests = b.addTest("src/tests.zig");
+    main_tests.addPackage(packages.http);
     main_tests.setBuildMode(mode);
 
     const test_step = b.step("test", "Run library tests");

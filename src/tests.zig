@@ -1,4 +1,4 @@
-usingnamespace @import("headers.zig");
-usingnamespace @import("request.zig");
-usingnamespace @import("response.zig");
-usingnamespace @import("utils.zig");
+usingnamespace @import("connection.zig");
+usingnamespace @import("events/tests.zig");
+usingnamespace @import("parsers/tests.zig");
+usingnamespace @import("state_machines/tests.zig");
