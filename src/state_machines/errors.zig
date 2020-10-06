@@ -1,4 +1,6 @@
 pub const SMError = error {
     LocalProtocolError,
-    OutOfMemory
+    NeedData,
+    OutOfMemory,
+    RemoteProtocolError,
 };

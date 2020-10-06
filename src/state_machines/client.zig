@@ -10,8 +10,8 @@ const SMError = @import("errors.zig").SMError;
 const Version = @import("http").Version;
 
 pub const ClientSM = struct {
-    state: State,
     allocator: *Allocator,
+    state: State,
 
     pub fn init(allocator: *Allocator) ClientSM {
         return ClientSM { .allocator = allocator, .state = State.Idle};
@@ -26,7 +26,7 @@ pub const ClientSM = struct {
         };
     }
 
-    pub fn sendRequest(self: *ClientSM, event: Event) SMError![]const u8 {
+    fn sendRequest(self: *ClientSM, event: Event) SMError![]const u8 {
         return switch (event) {
             .Request => |request| then: {
                 var result = try request.serialize(self.allocator);
@@ -37,7 +37,7 @@ pub const ClientSM = struct {
         };
     }
 
-    pub fn sendData(self: *ClientSM, event: Event) SMError![]const u8 {
+    fn sendData(self: *ClientSM, event: Event) SMError![]const u8 {
         return switch (event) {
             .Data => |data| data.content,
             .EndOfMessage => then: {
@@ -48,7 +48,7 @@ pub const ClientSM = struct {
         };
     }
 
-    pub fn closeConnection(self: *ClientSM, event: Event) SMError![]const u8 {
+    fn closeConnection(self: *ClientSM, event: Event) SMError![]const u8 {
         return switch (event) {
             .ConnectionClosed => then: {
                 self.state = .Closed;
