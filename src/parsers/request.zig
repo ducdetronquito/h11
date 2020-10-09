@@ -8,9 +8,9 @@ pub const Request = struct {
     method: []const u8,
     target: []const u8,
     httpVersion: []const u8,
-    headers: []Header,
+    headers: []?Header,
 
-    pub fn parse(buffer: []const u8, headers: []Header) ParsingError!Request {
+    pub fn parse(buffer: []const u8, headers: []?Header) ParsingError!Request {
         const requestLine = readLine(buffer) orelse return error.Incomplete;
 
         const method = try readToken(requestLine);
@@ -109,7 +109,7 @@ const expect = std.testing.expect;
 const expectError = std.testing.expectError;
 
 test "Parse - Success" {
-    var headers: [2]Header = undefined;
+    var headers: [2]?Header = undefined;
     const content = "GET http://www.example.org/where?q=now HTTP/1.1\r\nUser-Agent: h11\r\nAccept-Language: en\r\n\r\n";
 
     const request = try Request.parse(content, &headers);
@@ -119,14 +119,14 @@ test "Parse - Success" {
     expect(std.mem.eql(u8, request.httpVersion, "HTTP/1.1"));
 
     expect(request.headers.len == 2);
-    expect(std.mem.eql(u8, request.headers[0].name, "User-Agent"));
-    expect(std.mem.eql(u8, request.headers[0].value, "h11"));
-    expect(std.mem.eql(u8, request.headers[1].name, "Accept-Language"));
-    expect(std.mem.eql(u8, request.headers[1].value, "en"));
+    expect(std.mem.eql(u8, request.headers[0].?.name, "User-Agent"));
+    expect(std.mem.eql(u8, request.headers[0].?.value, "h11"));
+    expect(std.mem.eql(u8, request.headers[1].?.name, "Accept-Language"));
+    expect(std.mem.eql(u8, request.headers[1].?.value, "en"));
 }
 
 test "Parse - When the request line does not ends with a CRLF - Returns Incomplete" {
-    var headers: [0]Header = undefined;
+    var headers: [0]?Header = undefined;
     const content = "GET http://www.example.org/where?q=now HTTP/1.1";
 
     const request = Request.parse(content, &headers);
@@ -135,7 +135,7 @@ test "Parse - When the request line does not ends with a CRLF - Returns Incomple
 }
 
 test "Parse - When the method contains an invalid character - Returns Invalid" {
-    var headers: [0]Header = undefined;
+    var headers: [0]?Header = undefined;
     const content = "G\tET http://www.example.org/where?q=now HTTP/1.1\r\n\r\n\r\n";
 
     const request = Request.parse(content, &headers);
@@ -144,7 +144,7 @@ test "Parse - When the method contains an invalid character - Returns Invalid" {
 }
 
 test "Parse - When the method and the target are not separated by a whitespace - Returns Invalid" {
-    var headers: [0]Header = undefined;
+    var headers: [0]?Header = undefined;
     const content = "GEThttp://www.example.org/where?q=now HTTP/1.1\r\n\r\n\r\n";
 
     const request = Request.parse(content, &headers);
@@ -153,7 +153,7 @@ test "Parse - When the method and the target are not separated by a whitespace -
 }
 
 test "Parse - When the target contains an invalid character - Returns Invalid" {
-    var headers: [0]Header = undefined;
+    var headers: [0]?Header = undefined;
     const content = "GET http://www.\texample.org/where?q=now HTTP/1.1\r\n\r\n\r\n";
 
     const request = Request.parse(content, &headers);
@@ -162,7 +162,7 @@ test "Parse - When the target contains an invalid character - Returns Invalid" {
 }
 
 test "Parse - When the target and the http version are not separated by a whitespace - Returns Invalid" {
-    var headers: [0]Header = undefined;
+    var headers: [0]?Header = undefined;
     const content = "GET http://www.example.org/where?q=nowHTTP/1.1\r\n\r\n\r\n";
 
     const request = Request.parse(content, &headers);
@@ -171,7 +171,7 @@ test "Parse - When the target and the http version are not separated by a whites
 }
 
 test "Parse - When the http version is not HTTP 1.1 - Returns Invalid" {
-    var headers: [0]Header = undefined;
+    var headers: [0]?Header = undefined;
     const content = "GET http://www.example.org/where?q=now HTTP/4.2\r\n\r\n\r\n";
 
     const request = Request.parse(content, &headers);

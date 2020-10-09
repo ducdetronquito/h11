@@ -7,9 +7,9 @@ const std = @import("std");
 pub const Response = struct {
     statusCode: u16,
     httpVersion: []const u8,
-    headers: []Header,
+    headers: []?Header,
 
-    pub fn parse(buffer: []const u8, headers: []Header) ParsingError!Response {
+    pub fn parse(buffer: []const u8, headers: []?Header) ParsingError!Response {
         const statusLine = readLine(buffer) orelse return error.Incomplete;
 
         const httpVersion = try readVersion(statusLine[0..8]);
@@ -38,7 +38,7 @@ const expect = std.testing.expect;
 const expectError = std.testing.expectError;
 
 test "Parse - Success" {
-    var headers: [2]Header = undefined;
+    var headers: [2]?Header = undefined;
     const content = "HTTP/1.1 200 OK\r\nServer: Apache\r\nContent-Length: 0\r\n\r\n";
 
     const response = try Response.parse(content, &headers);
@@ -47,14 +47,14 @@ test "Parse - Success" {
     expect(std.mem.eql(u8, response.httpVersion, "HTTP/1.1"));
 
     expect(response.headers.len == 2);
-    expect(std.mem.eql(u8, response.headers[0].name, "Server"));
-    expect(std.mem.eql(u8, response.headers[0].value, "Apache"));
-    expect(std.mem.eql(u8, response.headers[1].name, "Content-Length"));
-    expect(std.mem.eql(u8, response.headers[1].value, "0"));
+    expect(std.mem.eql(u8, response.headers[0].?.name, "Server"));
+    expect(std.mem.eql(u8, response.headers[0].?.value, "Apache"));
+    expect(std.mem.eql(u8, response.headers[1].?.name, "Content-Length"));
+    expect(std.mem.eql(u8, response.headers[1].?.value, "0"));
 }
 
 test "Parse - With missing reason phrase - Success" {
-    var headers: [0]Header = undefined;
+    var headers: [0]?Header = undefined;
     const content = "HTTP/1.1 200\r\n\r\n\r\n";
 
     const response = try Response.parse(content, &headers);
@@ -64,7 +64,7 @@ test "Parse - With missing reason phrase - Success" {
 }
 
 test "Issue #28: Parse - Wit status code above 255 - Success" {
-    var headers: [0]Header = undefined;
+    var headers: [0]?Header = undefined;
     const content = "HTTP/1.1 421\r\n\r\n\r\n";
 
     const response = try Response.parse(content, &headers);
@@ -73,7 +73,7 @@ test "Issue #28: Parse - Wit status code above 255 - Success" {
 }
 
 test "Parse - When the response line does not ends with a CRLF - Returns Incomplete" {
-    var headers: [0]Header = undefined;
+    var headers: [0]?Header = undefined;
     const content = "HTTP/1.1 200 OK";
 
     const response = Response.parse(content, &headers);
@@ -82,7 +82,7 @@ test "Parse - When the response line does not ends with a CRLF - Returns Incompl
 }
 
 test "Parse - When the http version and the status code are not separated by a whitespace - Returns Invalid" {
-    var headers: [0]Header = undefined;
+    var headers: [0]?Header = undefined;
     const content = "HTTP/1.1200 OK\r\n\r\n\r\n";
 
     const response = Response.parse(content, &headers);
@@ -91,7 +91,7 @@ test "Parse - When the http version and the status code are not separated by a w
 }
 
 test "Parse - When the http version is not HTTP 1.1 - Returns Invalid" {
-    var headers: [0]Header = undefined;
+    var headers: [0]?Header = undefined;
     const content = "HTTP/4.2 200\r\n\r\n\r\n";
 
     const response = Response.parse(content, &headers);
@@ -100,7 +100,7 @@ test "Parse - When the http version is not HTTP 1.1 - Returns Invalid" {
 }
 
 test "Parse - When the status code is not an integer - Returns Invalid" {
-    var headers: [0]Header = undefined;
+    var headers: [0]?Header = undefined;
     const content = "HTTP/1.1 2xx OK\r\n\r\n\r\n";
 
     const response = Response.parse(content, &headers);
@@ -109,7 +109,7 @@ test "Parse - When the status code is not an integer - Returns Invalid" {
 }
 
 test "Issue #29: Parse - When the status code is more than 3 digits - Returns Invalid" {
-    var headers: [0]Header = undefined;
+    var headers: [0]?Header = undefined;
     const content = "HTTP/1.1 1871 OK\r\n\r\n\r\n";
 
     const response = Response.parse(content, &headers);
