@@ -6,7 +6,7 @@ pub const Header = struct {
     name: []const u8,
     value: []const u8,
 
-    pub fn parse(buffer: []const u8, headers: []Header) ParsingError![]Header {
+    pub fn parse(buffer: []const u8, headers: []?Header) ParsingError![]?Header {
         var cursor: usize = 0;
         var header_cursor: usize = 0;
 
@@ -160,30 +160,30 @@ const expectError = std.testing.expectError;
 
 test "Parse - Single header - Success" {
     const content = "Content-Length: 10\r\n\r\n";
-    var headers: [1]Header = undefined;
+    var headers: [1]?Header = undefined;
 
     var result = try Header.parse(content, &headers);
 
-    expect(std.mem.eql(u8, result[0].name, "Content-Length"));
-    expect(std.mem.eql(u8, result[0].value, "10"));
+    expect(std.mem.eql(u8, result[0].?.name, "Content-Length"));
+    expect(std.mem.eql(u8, result[0].?.value, "10"));
 }
 
 test "Parse - Multiple headers - Success" {
     const content = "Content-Length: 10\r\nServer: Apache\r\n\r\n";
-    var headers: [2]Header = undefined;
+    var headers: [2]?Header = undefined;
 
     const result = try Header.parse(content, &headers);
 
-    expect(std.mem.eql(u8, result[0].name, "Content-Length"));
-    expect(std.mem.eql(u8, result[0].value, "10"));
+    expect(std.mem.eql(u8, result[0].?.name, "Content-Length"));
+    expect(std.mem.eql(u8, result[0].?.value, "10"));
 
-    expect(std.mem.eql(u8, result[1].name, "Server"));
-    expect(std.mem.eql(u8, result[1].value, "Apache"));
+    expect(std.mem.eql(u8, result[1].?.name, "Server"));
+    expect(std.mem.eql(u8, result[1].?.value, "Apache"));
 }
 
 test "Parse - Resize header slice - Success" {
     const content = "Content-Length: 10\r\n\r\n";
-    var headers: [2]Header = undefined;
+    var headers: [2]?Header = undefined;
 
     const result = try Header.parse(content, &headers);
 
@@ -192,17 +192,17 @@ test "Parse - Resize header slice - Success" {
 
 test "Parse - Ignore a missing whitespace between the semicolon and the header value - Success" {
     const content = "Content-Length:10\r\n\r\n";
-    var headers: [1]Header = undefined;
+    var headers: [1]?Header = undefined;
 
     const result = try Header.parse(content, &headers);
 
-    expect(std.mem.eql(u8, result[0].name, "Content-Length"));
-    expect(std.mem.eql(u8, result[0].value, "10"));
+    expect(std.mem.eql(u8, result[0].?.name, "Content-Length"));
+    expect(std.mem.eql(u8, result[0].?.value, "10"));
 }
 
 test "Parse - When the last CRLF after the headers is missing - Returns Incomplete" {
     const content = "Content-Length: 10\r\n";
-    var headers: [1]Header = undefined;
+    var headers: [1]?Header = undefined;
 
     const fail = Header.parse(content, &headers);
     expectError(error.Incomplete, fail);
@@ -210,7 +210,7 @@ test "Parse - When the last CRLF after the headers is missing - Returns Incomple
 
 test "Parse - When a header's name does not end with a semicolon - Returns Incomplete" {
     const content = "Content-Length: 10\r\nSe";
-    var headers: [2]Header = undefined;
+    var headers: [2]?Header = undefined;
 
     const fail = Header.parse(content, &headers);
     expectError(error.Incomplete, fail);
@@ -218,7 +218,7 @@ test "Parse - When a header's name does not end with a semicolon - Returns Incom
 
 test "Parse - When a header's value does not exist - Returns Incomplete" {
     const content = "Content-Length:";
-    var headers: [2]Header = undefined;
+    var headers: [2]?Header = undefined;
 
     const fail = Header.parse(content, &headers);
     expectError(error.Incomplete, fail);
@@ -226,7 +226,7 @@ test "Parse - When a header's value does not exist - Returns Incomplete" {
 
 test "Parse - When a header's value does not exist (but the whitespace after the semicolon is here) - Returns Incomplete" {
     const content = "Content-Length: ";
-    var headers: [2]Header = undefined;
+    var headers: [2]?Header = undefined;
 
     const fail = Header.parse(content, &headers);
     expectError(error.Incomplete, fail);
@@ -234,7 +234,7 @@ test "Parse - When a header's value does not exist (but the whitespace after the
 
 test "Parse - When LF is mising after a header's value - Returns Incomplete" {
     const content = "Content-Length: 10\r";
-    var headers: [1]Header = undefined;
+    var headers: [1]?Header = undefined;
 
     const fail = Header.parse(content, &headers);
 
@@ -243,7 +243,7 @@ test "Parse - When LF is mising after a header's value - Returns Incomplete" {
 
 test "Parse - When parsing more headers than expected - Returns TooManyHeaders" {
     const content = "Content-Length: 10\r\nServer: Apache\r\n\r\n";
-    var headers: [1]Header = undefined;
+    var headers: [1]?Header = undefined;
 
     const fail = Header.parse(content, &headers);
     expectError(error.TooManyHeaders, fail);
@@ -251,7 +251,7 @@ test "Parse - When parsing more headers than expected - Returns TooManyHeaders" 
 
 test "Parse - Invalid character in the header's name - Returns Invalid" {
     const content = "Cont(ent-Length: 10\r\n\r\n";
-    var headers: [1]Header = undefined;
+    var headers: [1]?Header = undefined;
 
     const fail = Header.parse(content, &headers);
 
@@ -260,7 +260,7 @@ test "Parse - Invalid character in the header's name - Returns Invalid" {
 
 test "Parse - Invalid character in the header's value after the semicolon - Returns Invalid" {
     const content = "Content-Length:\r\n";
-    var headers: [1]Header = undefined;
+    var headers: [1]?Header = undefined;
 
     const fail = Header.parse(content, &headers);
 
@@ -269,7 +269,7 @@ test "Parse - Invalid character in the header's value after the semicolon - Retu
 
 test "Parse - Invalid character in the header's value - Returns Invalid" {
     const content = "Content-Length: 1\r0\r\n";
-    var headers: [1]Header = undefined;
+    var headers: [1]?Header = undefined;
 
     const fail = Header.parse(content, &headers);
 
