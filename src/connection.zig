@@ -10,66 +10,62 @@ pub const SMError = @import("state_machines/errors.zig").SMError;
 const std = @import("std");
 
 
-fn Connection(comptime LocalState: type, comptime RemoteState: type) type {
-    return struct {
-        buffer: Buffer,
-        localState: LocalState,
-        remoteState: RemoteState,
+pub const Client = struct {
+    buffer: Buffer,
+    localState: ClientSM,
+    remoteState: ServerSM,
 
-        pub fn init(allocator: *Allocator) Connection(LocalState, RemoteState) {
-            var localState = LocalState.init(allocator);
-            var remoteState = RemoteState.init(allocator);
+    pub fn init(allocator: *Allocator) Client {
+        var localState = ClientSM.init(allocator);
+        var remoteState = ServerSM.init(allocator);
 
-            return Connection(LocalState, RemoteState){
-                .buffer = Buffer.init(allocator),
-                .localState = localState,
-                .remoteState = remoteState,
-            };
+        return Client {
+            .buffer = Buffer.init(allocator),
+            .localState = localState,
+            .remoteState = remoteState,
+        };
+    }
+
+    pub fn deinit(self: *Client) void {
+        self.buffer.deinit();
+    }
+
+    pub fn send(self: *Client, event: Event) SMError![]const u8 {
+        return self.localState.send(event);
+    }
+
+    pub fn receive(self: *Client, data: []const u8) !void{
+        try self.buffer.appendSlice(data);
+    }
+
+    pub fn nextEvent(self: *Client) SMError!Event {
+        var event = try self.remoteState.nextEvent(&self.buffer);
+
+        switch (event) {
+            .Response => |response| {
+                self.frameResponseBody(response) catch |err| {
+                    response.deinit();
+                    return err;
+                };
+            },
+            else => {},
         }
+        return event;
+    }
 
-        pub fn deinit(self: *Connection(LocalState, RemoteState)) void {
-            self.buffer.deinit();
+    // Cf: RFC 7230 - 3.3 Message Boddy
+    // https://tools.ietf.org/html/rfc7230#section-3.3
+    // https://tools.ietf.org/html/rfc7230#section-3.3.3
+    pub fn frameResponseBody(self: *Client, response: Response) SMError!void {
+        var contentLength: usize = 0;
+        var rawContentLength = response.headers.getValue("Content-Length");
+        if (rawContentLength != null) {
+            contentLength = std.fmt.parseInt(usize, rawContentLength.?, 10) catch return error.RemoteProtocolError;
         }
-
-        pub fn send(self: *Connection(LocalState, RemoteState), event: Event) SMError![]const u8 {
-            return self.localState.send(event);
-        }
-
-        pub fn receive(self: *Connection(LocalState, RemoteState), data: []const u8) !void{
-            try self.buffer.appendSlice(data);
-        }
-
-        pub fn nextEvent(self: *Connection(LocalState, RemoteState)) SMError!Event {
-            var event = try self.remoteState.nextEvent(&self.buffer);
-
-            switch (event) {
-                .Response => |response| {
-                    self.frameResponseBody(response) catch |err| {
-                        response.deinit();
-                        return err;
-                    };
-                },
-                else => {},
-            }
-            return event;
-        }
-
-        // Cf: RFC 7230 - 3.3 Message Boddy
-        // https://tools.ietf.org/html/rfc7230#section-3.3
-        // https://tools.ietf.org/html/rfc7230#section-3.3.3
-        pub fn frameResponseBody(self: *Connection(LocalState, RemoteState), response: Response) SMError!void {
-            var contentLength: usize = 0;
-            var rawContentLength = response.headers.getValue("Content-Length");
-            if (rawContentLength != null) {
-                contentLength = std.fmt.parseInt(usize, rawContentLength.?, 10) catch return error.RemoteProtocolError;
-            }
-            var reader = BodyReader { .ContentLength = ContentLengthReader.init(contentLength) };
-            self.remoteState.defineBodyReader(reader);
-        }
-    };
-}
-
-pub const Client = Connection(ClientSM, ServerSM);
+        var reader = BodyReader { .ContentLength = ContentLengthReader.init(contentLength) };
+        self.remoteState.defineBodyReader(reader);
+    }
+};
 
 
 const expect = std.testing.expect;
