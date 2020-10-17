@@ -1,14 +1,14 @@
 const Header = @import("headers.zig").Header;
 const ParsingError = @import("errors.zig").ParsingError;
 const readLine = @import("utils.zig").readLine;
-const readVersion = @import("utils.zig").readVersion;
 const StatusCode = @import("http").StatusCode;
+const Version = @import("http").Version;
 const std = @import("std");
 
 
 pub const Response = struct {
     statusCode: StatusCode,
-    httpVersion: []const u8,
+    httpVersion: Version,
     headers: []?Header,
 
     pub fn parse(buffer: []const u8, headers: []?Header) ParsingError!Response {
@@ -17,7 +17,11 @@ pub const Response = struct {
             return error.Invalid;
         }
 
-        const httpVersion = try readVersion(statusLine[0..8]);
+        const httpVersion = Version.from_bytes(statusLine[0..8]) orelse return error.Invalid;
+        switch(httpVersion) {
+            .Http11 => {},
+            else => return error.Invalid,
+        }
 
         if (statusLine[8] != ' ') {
             return error.Invalid;
@@ -50,7 +54,7 @@ test "Parse - Success" {
     const response = try Response.parse(content, &headers);
 
     expect(response.statusCode == .Ok);
-    expect(std.mem.eql(u8, response.httpVersion, "HTTP/1.1"));
+    expect(response.httpVersion == .Http11);
 
     expect(response.headers.len == 2);
     expect(std.mem.eql(u8, response.headers[0].?.name, "Server"));
@@ -65,7 +69,7 @@ test "Parse - Missing reason phrase" {
     const response = try Response.parse("HTTP/1.1 200\r\n\r\n\r\n", &headers);
 
     expect(response.statusCode == .Ok);
-    expect(std.mem.eql(u8, response.httpVersion, "HTTP/1.1"));
+    expect(response.httpVersion == .Http11);
 }
 
 test "Issue #28: Parse - Status code below 100 and above 599 are invalid" {
@@ -84,6 +88,14 @@ test "Parse - When the response line does not ends with a CRLF - Returns Incompl
     const response = Response.parse("HTTP/1.1 200 OK", &headers);
 
     expectError(error.Incomplete, response);
+}
+
+test "Parse - Response is invalid if the HTTP version is not HTTP/1.1" {
+    var headers: [0]?Header = undefined;
+
+    const response = Response.parse("HTTP/1.0 200 OK\r\n\r\n\r\n", &headers);
+
+    expectError(error.Invalid, response);
 }
 
 test "Parse - Response is invalid if the status line is less than 12 characters" {
