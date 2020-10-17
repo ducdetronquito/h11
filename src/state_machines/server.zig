@@ -88,10 +88,7 @@ pub const ServerSM = struct {
             break;
         }
 
-        // NB: Should we validate the status code range withun the parsers directly.
-        var statusCode = StatusCode.from_u16(raw_response.statusCode) catch |err| return error.RemoteProtocolError;
-
-        var responseEvent = events.Response.init(headers, statusCode, Version.Http11);
+        var responseEvent = events.Response.init(headers, raw_response.statusCode, Version.Http11);
 
         return Event { .Response = responseEvent};
     }
@@ -144,18 +141,6 @@ test "NextEvent - Cannot retrieve a response event if the data is invalid" {
     expect(server.state == .Error);
 }
 
-
-test "NextEvent - Cannot retrieve a response event if the status code is not valid" {
-    var server = ServerSM.init(std.testing.allocator);
-
-    var buffer = Buffer.init(std.testing.allocator);
-    defer buffer.deinit();
-    try buffer.appendSlice("HTTP/1.1 836 OK\r\nServer: Apache\r\nContent-Length: 0\r\n\r\n");
-
-    var event = server.nextEvent(&buffer);
-    expectError(error.RemoteProtocolError, event);
-    expect(server.state == .Error);
-}
 
 test "NextEvent - Move into the error state when failing to retrieve a Response event" {
     var server = ServerSM.init(std.testing.allocator);
