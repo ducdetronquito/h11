@@ -2,78 +2,76 @@ const Allocator = std.mem.Allocator;
 const BodyReader = @import("readers.zig").BodyReader;
 const Buffer = @import("buffer.zig").Buffer;
 pub const ClientSM = @import("state_machines/client.zig").ClientSM;
-const ContentLengthReader = @import("readers.zig").ContentLengthReader;
 const Event = @import("events.zig").Event;
+const Method = @import("http").Method;
 const Response = @import("events.zig").Response;
 pub const ServerSM = @import("state_machines/server.zig").ServerSM;
 pub const SMError = @import("state_machines/errors.zig").SMError;
 const std = @import("std");
 
 
-fn Connection(comptime LocalState: type, comptime RemoteState: type) type {
-    return struct {
-        buffer: Buffer,
-        localState: LocalState,
-        remoteState: RemoteState,
+pub const Client = struct {
+    buffer: Buffer,
+    localState: ClientSM,
+    remoteState: ServerSM,
+    sentRequestMethod: ?Method,
 
-        pub fn init(allocator: *Allocator) Connection(LocalState, RemoteState) {
-            var localState = LocalState.init(allocator);
-            var remoteState = RemoteState.init(allocator);
+    pub fn init(allocator: *Allocator) Client {
+        var localState = ClientSM.init(allocator);
+        var remoteState = ServerSM.init(allocator);
 
-            return Connection(LocalState, RemoteState){
-                .buffer = Buffer.init(allocator),
-                .localState = localState,
-                .remoteState = remoteState,
-            };
+        return Client {
+            .buffer = Buffer.init(allocator),
+            .localState = localState,
+            .remoteState = remoteState,
+            .sentRequestMethod = null,
+        };
+    }
+
+    pub fn deinit(self: *Client) void {
+        self.buffer.deinit();
+    }
+
+    pub fn send(self: *Client, event: Event) SMError![]const u8 {
+        var bytes = try self.localState.send(event);
+        switch(event) {
+            .Request => |request| self.sentRequestMethod = request.method,
+            else => {}
         }
+        return bytes;
+    }
 
-        pub fn deinit(self: *Connection(LocalState, RemoteState)) void {
-            self.buffer.deinit();
+    pub fn receive(self: *Client, data: []const u8) !void{
+        try self.buffer.appendSlice(data);
+    }
+
+    pub fn nextEvent(self: *Client) SMError!Event {
+        var event = try self.remoteState.nextEvent(&self.buffer);
+
+        switch (event) {
+            .Response => |response| {
+                errdefer response.deinit();
+                try self.frameResponseBody(response);
+            },
+            else => {},
         }
+        return event;
+    }
 
-        pub fn send(self: *Connection(LocalState, RemoteState), event: Event) SMError![]const u8 {
-            return self.localState.send(event);
-        }
-
-        pub fn receive(self: *Connection(LocalState, RemoteState), data: []const u8) !void{
-            try self.buffer.appendSlice(data);
-        }
-
-        pub fn nextEvent(self: *Connection(LocalState, RemoteState)) SMError!Event {
-            var event = try self.remoteState.nextEvent(&self.buffer);
-
-            switch (event) {
-                .Response => |response| {
-                    self.frameResponseBody(response) catch |err| {
-                        response.deinit();
-                        return err;
-                    };
-                },
-                else => {},
-            }
-            return event;
-        }
-
-        // Cf: RFC 7230 - 3.3 Message Boddy
-        // https://tools.ietf.org/html/rfc7230#section-3.3
-        // https://tools.ietf.org/html/rfc7230#section-3.3.3
-        pub fn frameResponseBody(self: *Connection(LocalState, RemoteState), response: Response) SMError!void {
-            var contentLength: usize = 0;
-            var rawContentLength = response.headers.getValue("Content-Length");
-            if (rawContentLength != null) {
-                contentLength = std.fmt.parseInt(usize, rawContentLength.?, 10) catch return error.RemoteProtocolError;
-            }
-            var reader = BodyReader { .ContentLength = ContentLengthReader.init(contentLength) };
-            self.remoteState.defineBodyReader(reader);
-        }
-    };
-}
-
-pub const Client = Connection(ClientSM, ServerSM);
+    // Cf: RFC 7230 - 3.3 Message Boddy
+    // https://tools.ietf.org/html/rfc7230#section-3.3
+    // https://tools.ietf.org/html/rfc7230#section-3.3.3
+    pub fn frameResponseBody(self: *Client, response: Response) SMError!void {
+        var reader = try BodyReader.frame(self.sentRequestMethod.?, response);
+        self.remoteState.defineBodyReader(reader);
+    }
+};
 
 
 const expect = std.testing.expect;
 const expectError = std.testing.expectError;
+const HeaderMap = @import("http").HeaderMap;
+const Request = @import("events.zig").Request;
 
 test "Send - Client can send an event" {
     var client = Client.init(std.testing.allocator);
@@ -84,6 +82,20 @@ test "Send - Client can send an event" {
     var result = try client.send(.EndOfMessage);
 }
 
+test "Send - Remember the request method when sending a request event" {
+    var client = Client.init(std.testing.allocator);
+    defer client.deinit();
+
+    var headers = HeaderMap.init(std.testing.allocator);
+    defer headers.deinit();
+    _ = try headers.put("Host", "www.ziglang.org");
+
+    var request = try Request.init(.Get, "/", .Http11, headers);
+    var bytes = try client.send(Event {.Request = request });
+    std.testing.allocator.free(bytes);
+
+    expect(client.sentRequestMethod.? == .Get);
+}
 
 test "Receive" {
     var client = Client.init(std.testing.allocator);
@@ -106,6 +118,7 @@ test "NextEvent" {
 test "NextEvent - Fail to return a Response event when the content length is invalid." {
     var client = Client.init(std.testing.allocator);
     defer client.deinit();
+    client.sentRequestMethod = .Get;
 
     try client.receive("HTTP/1.1 200 OK\r\nContent-Length: XXX\r\n\r\n");
     var event = client.nextEvent();
@@ -116,6 +129,7 @@ test "NextEvent - Fail to return a Response event when the content length is inv
 test "NextEvent - A Response event with no content length must be followed by an EndOfMessage event." {
     var client = Client.init(std.testing.allocator);
     defer client.deinit();
+    client.sentRequestMethod = .Get;
 
     try client.receive("HTTP/1.1 200 OK\r\n\r\n");
     var event = try client.nextEvent();
@@ -128,6 +142,7 @@ test "NextEvent - A Response event with no content length must be followed by an
 test "NextEvent - A Response event with a content length muste be followed by a Data event and an EndOfMessage event." {
     var client = Client.init(std.testing.allocator);
     defer client.deinit();
+    client.sentRequestMethod = .Get;
     try client.receive("HTTP/1.1 200 OK\r\nContent-Length: 34\r\n\r\nAin't no sunshine when she's gone.");
 
     var event = try client.nextEvent();
