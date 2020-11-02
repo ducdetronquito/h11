@@ -5,8 +5,6 @@ const ContentLengthReader = @import("../readers.zig").ContentLengthReader;
 const Data = @import("../events.zig").Data;
 const events = @import("../events.zig");
 const Event = events.Event;
-const Header = @import("../parsers/main.zig").Header;
-const HeaderMap = @import("http").HeaderMap;
 const parsers = @import("../parsers/main.zig");
 const SMError = @import("errors.zig").SMError;
 const State = @import("states.zig").State;
@@ -70,27 +68,16 @@ pub const ServerSM = struct {
     }
 
     fn readResponse(self: *ServerSM, buffer: *Buffer) SMError!Event {
-        var raw_headers = try self.allocator.alloc(?Header, 128);
-        defer self.allocator.free(raw_headers);
-
-
         var pos = buffer.findBlankLine() orelse return error.NeedData;
         var data = buffer.read(pos + 4) catch return error.NeedData;
 
-        var raw_response = parsers.Response.parse(data, raw_headers) catch return error.RemoteProtocolError;
+        var response = parsers.Response.parse(self.allocator, data) catch {
+            return error.RemoteProtocolError;
+        };
 
-        var headers = HeaderMap.init(self.allocator);
-        errdefer headers.deinit();
-        for (raw_headers) |item| {
-            if (item != null) {
-                _ = try headers.put(item.?.name, item.?.value);
-            }
-            break;
-        }
+        var event = events.Response.init(response.headers, response.statusCode, Version.Http11);
 
-        var responseEvent = events.Response.init(headers, raw_response.statusCode, Version.Http11);
-
-        return Event { .Response = responseEvent};
+        return Event { .Response = event};
     }
 };
 

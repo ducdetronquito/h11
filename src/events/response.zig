@@ -1,13 +1,13 @@
-const HeaderMap = @import("http").HeaderMap;
+const Headers = @import("http").Headers;
 const StatusCode = @import("http").StatusCode;
 const Version = @import("http").Version;
 
 pub const Response = struct {
-    headers: HeaderMap,
+    headers: Headers,
     statusCode: StatusCode,
     version: Version,
 
-    pub fn init(headers: HeaderMap, statusCode: StatusCode, version: Version) Response {
+    pub fn init(headers: Headers, statusCode: StatusCode, version: Version) Response {
         return Response {
             .headers = headers,
             .statusCode = statusCode,
@@ -16,6 +16,7 @@ pub const Response = struct {
     }
 
     pub fn deinit(self: Response) void {
-        self.headers.deinit();
+        var headers = self.headers;
+        headers.deinit();
     }
 };

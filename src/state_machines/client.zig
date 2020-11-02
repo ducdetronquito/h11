@@ -1,7 +1,7 @@
 const Allocator = std.mem.Allocator;
 const Data = @import("../events.zig").Data;
 const Event = @import("../events.zig").Event;
-const HeaderMap = @import("http").HeaderMap;
+const Headers = @import("http").Headers;
 const Method = @import("http").Method;
 const Request = @import("../events.zig").Request;
 const State = @import("states.zig").State;
@@ -71,9 +71,9 @@ const expectError = std.testing.expectError;
 test "Send - Can send a Request event when state is Idle" {
     var client = ClientSM.init(std.testing.allocator);
 
-    var headers = HeaderMap.init(std.testing.allocator);
-    _ = try headers.put("Host", "www.ziglang.org");
-    _ = try headers.put("GOTTA-GO", "FAST!");
+    var headers = Headers.init(std.testing.allocator);
+    _ = try headers.append("Host", "www.ziglang.org");
+    _ = try headers.append("GOTTA-GO", "FAST!");
     defer headers.deinit();
 
     var requestEvent = try Request.init(Method.Get, "/", Version.Http11, headers);
