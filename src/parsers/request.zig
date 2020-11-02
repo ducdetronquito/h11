@@ -1,6 +1,6 @@
 const Allocator = std.mem.Allocator;
 const Headers = @import("http").Headers;
-const parse_headers = @import("headers.zig").parse;
+const parse_headers = @import("utils.zig").parse_headers;
 const ParsingError = @import("errors.zig").ParsingError;
 const readLine = @import("utils.zig").readLine;
 const readVersion = @import("utils.zig").readVersion;
