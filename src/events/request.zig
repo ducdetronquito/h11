@@ -1,6 +1,11 @@
 const Allocator = std.mem.Allocator;
 const Headers = @import("http").Headers;
 const Method = @import("http").Method;
+const parse_headers = @import("../parsers/utils.zig").parse_headers;
+const ParsingError = @import("../parsers/errors.zig").ParsingError;
+const readLine = @import("../parsers/utils.zig").readLine;
+const readToken = @import("../parsers/utils.zig").readToken;
+const readUri = @import("../parsers/utils.zig").readUri;
 const std = @import("std");
 const Version = @import("http").Version;
 
@@ -30,6 +35,43 @@ pub const Request = struct {
             .target = target,
             .version = version,
             .headers = headers,
+        };
+    }
+
+    pub fn deinit(self: *Request) void {
+        self.headers.deinit();
+    }
+
+    pub fn parse(allocator: *Allocator, buffer: []const u8) ParsingError!Request {
+        const requestLine = readLine(buffer) orelse return error.Incomplete;
+
+        var raw_method = try readToken(requestLine);
+
+        // TODO: Create Method.from_bytes
+        var method: Method = blk: {
+            if (std.mem.eql(u8, raw_method, "GET")) {
+                break :blk Method.Get;
+            } else if (std.mem.eql(u8, raw_method, "POST")) {
+                break :blk Method.Post;
+            } else {
+                break :blk Method { .Custom = raw_method };
+            }
+        };
+
+        const target = try readUri(requestLine[raw_method.len + 1..]);
+
+        const version = Version.from_bytes(requestLine[raw_method.len + target.len + 2..]) orelse return error.Invalid;
+        if (version != .Http11) {
+            return error.Invalid;
+        }
+
+        var _headers = try parse_headers(allocator, buffer[requestLine.len + 2..], 128);
+
+        return Request{
+            .headers = _headers,
+            .version = version,
+            .method = method,
+            .target = target,
         };
     }
 
@@ -75,7 +117,6 @@ test "Init - A HTTP/1.0 request may not contain a 'Host' header" {
     var request = try Request.init(Method.Get, "/news/", Version.Http10, headers);
 }
 
-
 test "Serialize" {
     var headers = Headers.init(std.testing.allocator);
     defer headers.deinit();
@@ -88,4 +129,65 @@ test "Serialize" {
     defer std.testing.allocator.free(result);
 
     expect(std.mem.eql(u8, result, "GET /news/ HTTP/1.1\r\nHost: ziglang.org\r\nGOTTA-GO: FAST!!\r\n\r\n"));
+}
+
+test "Parse - Success" {
+    const content = "GET http://www.example.org/where?q=now HTTP/1.1\r\nUser-Agent: h11\r\nAccept-Language: en\r\n\r\n";
+
+    var request = try Request.parse(std.testing.allocator, content);
+    defer request.deinit();
+
+    expect(request.method == .Get);
+    expect(std.mem.eql(u8, request.target, "http://www.example.org/where?q=now"));
+    expect(request.version == .Http11);
+
+    expect(request.headers.len() == 2);
+}
+
+test "Parse - When the request line does not ends with a CRLF - Returns Incomplete" {
+    const content = "GET http://www.example.org/where?q=now HTTP/1.1";
+
+    const failure = Request.parse(std.testing.allocator, content);
+
+    expectError(error.Incomplete, failure);
+}
+
+test "Parse - When the method contains an invalid character - Returns Invalid" {
+    const content = "G\tET http://www.example.org/where?q=now HTTP/1.1\r\n\r\n\r\n";
+
+    const failure = Request.parse(std.testing.allocator, content);
+
+    expectError(error.Invalid, failure);
+}
+
+test "Parse - When the method and the target are not separated by a whitespace - Returns Invalid" {
+    const content = "GEThttp://www.example.org/where?q=now HTTP/1.1\r\n\r\n\r\n";
+
+    const failure = Request.parse(std.testing.allocator, content);
+
+    expectError(error.Invalid, failure);
+}
+
+test "Parse - When the target contains an invalid character - Returns Invalid" {
+    const content = "GET http://www.\texample.org/where?q=now HTTP/1.1\r\n\r\n\r\n";
+
+    const failure = Request.parse(std.testing.allocator, content);
+
+    expectError(error.Invalid, failure);
+}
+
+test "Parse - When the target and the http version are not separated by a whitespace - Returns Invalid" {
+    const content = "GET http://www.example.org/where?q=nowHTTP/1.1\r\n\r\n\r\n";
+
+    const failure = Request.parse(std.testing.allocator, content);
+
+    expectError(error.Invalid, failure);
+}
+
+test "Parse - When the http version is not HTTP 1.1 - Returns Invalid" {
+    const content = "GET http://www.example.org/where?q=now HTTP/4.2\r\n\r\n\r\n";
+
+    const failure = Request.parse(std.testing.allocator, content);
+
+    expectError(error.Invalid, failure);
 }

@@ -92,11 +92,77 @@ pub fn readLine(buffer: []const u8) ?[]const u8 {
 }
 
 
-pub fn readVersion(buffer: []const u8) ParsingError![]const u8 {
-    if (std.mem.eql(u8, buffer, "HTTP/1.1")) {
-        return buffer;
-    }
+// Determines if a character is a token character.
+//
+// Cf: https://tools.ietf.org/html/rfc7230#section-3.2.6
+// > token          = 1*tchar
+// >
+// > tchar          = "!" / "#" / "$" / "%" / "&" / "'" / "*"
+// >                / "+" / "-" / "." / "^" / "_" / "`" / "|" / "~"
+// >                / DIGIT / ALPHA
+// >                ; any VCHAR, except delimiters
+fn is_token(char: u8) bool {
+    return char > 0x1f and char < 0x7f;
+}
 
+// Returns a token
+// Cf: https://tools.ietf.org/html/rfc7230#section-3.2.6
+pub fn readToken(buffer: []const u8) ParsingError![]const u8 {
+    for (buffer) |char, i| {
+        if (char == ' ') {
+            return buffer[0..i];
+        }
+        if (!is_token(char)) {
+            return error.Invalid;
+        }
+    }
+    return error.Invalid;
+}
+
+// ASCII codes accepted for an URI
+// Cf: Borrowed from Seamonstar's httparse library.
+// https://github.com/seanmonstar/httparse/blob/01e68542605d8a24a707536561c27a336d4090dc/src/lib.rs#L63
+const URI_MAP = [_]bool {
+    false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false,
+//   \0                                                             \t     \n                   \r
+    false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false,
+//   commands
+    false, true, false, true, true, true, true, true, true, true, true, true, true, true, true, true,
+//   \s     !     "      #     $     %     &     '     (     )     *     +     ,     -     .     /
+    true, true, true, true, true, true, true, true, true, true, true, true, false, true, false, true,
+//   0     1     2     3     4     5     6     7     8     9     :     ;     <      =     >      ?
+    true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true,
+//   @     A     B     C     D     E     F     G     H     I     J     K     L     M     N     O
+    true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true,
+//   P     Q     R     S     T     U     V     W     X     Y     Z     [     \     ]     ^     _
+    true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true,
+//   `     a     b     c     d     e     f     g     h     i     j     k     l     m     n     o
+    true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, false,
+//   p     q     r     s     t     u     v     w     x     y     z     {     |     }     ~     del
+//   ====== Extended ASCII (aka. obs-text) ======
+    false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false,
+    false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false,
+    false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false,
+    false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false,
+    false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false,
+    false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false,
+    false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false,
+    false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false,
+};
+
+fn is_uri_token(char: u8) bool {
+    return URI_MAP[char];
+}
+
+pub fn readUri(buffer: []const u8) ParsingError![]const u8 {
+    for (buffer) |char, i| {
+        if (char == ' ') {
+            return buffer[0..i];
+        }
+        if (!is_uri_token(char)) {
+            return error.Invalid;
+        }
+    }
     return error.Invalid;
 }
 
@@ -220,20 +286,4 @@ test "readLine - Success" {
     const line = readLine(content);
 
     expect(std.mem.eql(u8, line.?, "Hello"));
-}
-
-test "readVersion - Success" {
-    const content = "HTTP/1.1";
-
-    const version = try readVersion(content);
-
-    expect(std.mem.eql(u8, version, "HTTP/1.1"));
-}
-
-test "readVersion - Anything different that HTTP 1.1 - Returns Invalid" {
-    const content = "HTTP/4.2";
-
-    const version = readVersion(content);
-
-    expectError(error.Invalid, version);
 }
