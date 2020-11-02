@@ -5,7 +5,6 @@ const ContentLengthReader = @import("../readers.zig").ContentLengthReader;
 const Data = @import("../events.zig").Data;
 const events = @import("../events.zig");
 const Event = events.Event;
-const parsers = @import("../parsers/main.zig");
 const SMError = @import("errors.zig").SMError;
 const State = @import("states.zig").State;
 const StatusCode = @import("http").StatusCode;
@@ -71,7 +70,7 @@ pub const ServerSM = struct {
         var pos = buffer.findBlankLine() orelse return error.NeedData;
         var data = buffer.read(pos + 4) catch return error.NeedData;
 
-        var response = parsers.Response.parse(self.allocator, data) catch {
+        var response = events.Response.parse(self.allocator, data) catch {
             return error.RemoteProtocolError;
         };
 
