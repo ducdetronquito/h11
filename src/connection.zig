@@ -70,7 +70,7 @@ pub const Client = struct {
 
 const expect = std.testing.expect;
 const expectError = std.testing.expectError;
-const HeaderMap = @import("http").HeaderMap;
+const Headers = @import("http").Headers;
 const Request = @import("events.zig").Request;
 
 test "Send - Client can send an event" {
@@ -86,9 +86,9 @@ test "Send - Remember the request method when sending a request event" {
     var client = Client.init(std.testing.allocator);
     defer client.deinit();
 
-    var headers = HeaderMap.init(std.testing.allocator);
+    var headers = Headers.init(std.testing.allocator);
     defer headers.deinit();
-    _ = try headers.put("Host", "www.ziglang.org");
+    _ = try headers.append("Host", "www.ziglang.org");
 
     var request = try Request.init(.Get, "/", .Http11, headers);
     var bytes = try client.send(Event {.Request = request });
@@ -132,7 +132,7 @@ test "NextEvent - A Response event with no content length must be followed by an
     client.sentRequestMethod = .Get;
 
     try client.receive("HTTP/1.1 200 OK\r\n\r\n");
-    var event = try client.nextEvent();
+    var event = try client.nextEvent(); //TODO: CA PETE ICI
     event.deinit();
 
    event = try client.nextEvent();

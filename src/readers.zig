@@ -90,24 +90,27 @@ pub const BodyReader = union(BodyReaderType) {
             return .NoContent;
         }
 
+
         var contentLength: usize = 0;
-        var rawContentLength = response.headers.getValue("Content-Length");
-        if (rawContentLength != null) {
-            contentLength = fmt.parseInt(usize, rawContentLength.?, 10) catch return Error.RemoteProtocolError;
+        var contentLengthHeader = response.headers.get("Content-Length");
+
+        if (contentLengthHeader != null) {
+            contentLength = fmt.parseInt(usize, contentLengthHeader.?.value, 10) catch return Error.RemoteProtocolError;
         }
+
         return BodyReader { .ContentLength = ContentLengthReader.init(contentLength) };
     }
 };
 
 
 const expect = std.testing.expect;
-const HeaderMap = @import("http").HeaderMap;
+const Headers = @import("http").Headers;
 const std = @import("std");
 const StatusCode = @import("http").StatusCode;
 
 
 test "Frame Body - A HEAD request has no content" {
-    var headers = HeaderMap.init(std.testing.allocator);
+    var headers = Headers.init(std.testing.allocator);
     var response = Response.init(headers, .Ok, .Http11);
 
     var reader = try BodyReader.frame(.Head, response);
@@ -116,7 +119,7 @@ test "Frame Body - A HEAD request has no content" {
 }
 
 test "Frame Body - Informational responses (1XX status code) have no content" {
-    var headers = HeaderMap.init(std.testing.allocator);
+    var headers = Headers.init(std.testing.allocator);
     var response = Response.init(headers, .Continue, .Http11);
 
     var reader = try BodyReader.frame(.Get, response);
@@ -125,7 +128,7 @@ test "Frame Body - Informational responses (1XX status code) have no content" {
 }
 
 test "Frame Body - Response with a 204 No Content status code has no content" {
-    var headers = HeaderMap.init(std.testing.allocator);
+    var headers = Headers.init(std.testing.allocator);
     var response = Response.init(headers, .NoContent, .Http11);
 
     var reader = try BodyReader.frame(.Get, response);
@@ -134,7 +137,7 @@ test "Frame Body - Response with a 204 No Content status code has no content" {
 }
 
 test "Frame Body - Response with 304 Not Modified status code has no content" {
-    var headers = HeaderMap.init(std.testing.allocator);
+    var headers = Headers.init(std.testing.allocator);
     var response = Response.init(headers, .NotModified, .Http11);
 
     var reader = try BodyReader.frame(.Get, response);
@@ -143,7 +146,7 @@ test "Frame Body - Response with 304 Not Modified status code has no content" {
 }
 
 test "Frame Body - A successful response (2XX) to a CONNECT request has no content" {
-    var headers = HeaderMap.init(std.testing.allocator);
+    var headers = Headers.init(std.testing.allocator);
     var response = Response.init(headers, .Ok, .Http11);
 
     var reader = try BodyReader.frame(.Connect, response);

@@ -1,5 +1,5 @@
 const Allocator = std.mem.Allocator;
-const HeaderMap = @import("http").HeaderMap;
+const Headers = @import("http").Headers;
 const Method = @import("http").Method;
 const std = @import("std");
 const Version = @import("http").Version;
@@ -9,19 +9,17 @@ pub const Request = struct {
     method: Method,
     target: []const u8,
     version: Version,
-    headers: HeaderMap,
+    headers: Headers,
 
     pub const Error = error {
         MissingHost,
     };
 
-    pub fn init(method: Method, target: []const u8, version: Version, headers: HeaderMap) Error!Request {
+    pub fn init(method: Method, target: []const u8, version: Version, headers: Headers) Error!Request {
         if (version == .Http11) {
             // A single 'Host' header is mandatory for HTTP/1.1
             // Cf: https://tools.ietf.org/html/rfc7230#section-5.4
-            if (!headers.contains("Host")) {
-                return error.MissingHost;
-            }
+            _ = headers.get("Host") orelse return error.MissingHost;
             //TODO:
             // When 'HeaderMap' will be a proper multimap
             // return an error when the request contains multiple 'Host' headers.
@@ -47,9 +45,8 @@ pub const Request = struct {
         try buffer.appendSlice("\r\n");
 
         // Serialize the headers
-        var iterator = self.headers.iterator();
-        while (iterator.next()) |header| {
-            try buffer.appendSlice(header.key);
+        for (self.headers.items()) |header| {
+            try buffer.appendSlice(header.name.raw());
             try buffer.appendSlice(": ");
             try buffer.appendSlice(header.value);
             try buffer.appendSlice("\r\n");
@@ -64,7 +61,7 @@ const expect = std.testing.expect;
 const expectError = std.testing.expectError;
 
 test "Init - A HTTP/1.1 request must contain a 'Host' header" {
-    var headers = HeaderMap.init(std.testing.allocator);
+    var headers = Headers.init(std.testing.allocator);
     defer headers.deinit();
 
     var request = Request.init(Method.Get, "/news/", Version.Http11, headers);
@@ -72,7 +69,7 @@ test "Init - A HTTP/1.1 request must contain a 'Host' header" {
 }
 
 test "Init - A HTTP/1.0 request may not contain a 'Host' header" {
-    var headers = HeaderMap.init(std.testing.allocator);
+    var headers = Headers.init(std.testing.allocator);
     defer headers.deinit();
 
     var request = try Request.init(Method.Get, "/news/", Version.Http10, headers);
@@ -80,10 +77,10 @@ test "Init - A HTTP/1.0 request may not contain a 'Host' header" {
 
 
 test "Serialize" {
-    var headers = HeaderMap.init(std.testing.allocator);
+    var headers = Headers.init(std.testing.allocator);
     defer headers.deinit();
-    _ = try headers.put("Host", "ziglang.org");
-    _ = try headers.put("GOTTA-GO", "FAST!!");
+    _ = try headers.append("Host", "ziglang.org");
+    _ = try headers.append("GOTTA-GO", "FAST!!");
 
     var request = try Request.init(Method.Get, "/news/", Version.Http11, headers);
 
