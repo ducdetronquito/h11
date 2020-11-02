@@ -132,7 +132,7 @@ test "NextEvent - A Response event with no content length must be followed by an
     client.sentRequestMethod = .Get;
 
     try client.receive("HTTP/1.1 200 OK\r\n\r\n");
-    var event = try client.nextEvent(); //TODO: CA PETE ICI
+    var event = try client.nextEvent();
     event.deinit();
 
    event = try client.nextEvent();
