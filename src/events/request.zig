@@ -43,31 +43,30 @@ pub const Request = struct {
     }
 
     pub fn parse(allocator: *Allocator, buffer: []const u8) ParsingError!Request {
-        const requestLine = readLine(buffer) orelse return error.Incomplete;
+        var requestLine = readLine(buffer) orelse return error.Incomplete;
+        var cursor: usize = 0;
 
-        var raw_method = try readToken(requestLine);
-
-        // TODO: Create Method.from_bytes
-        var method: Method = blk: {
-            if (std.mem.eql(u8, raw_method, "GET")) {
-                break :blk Method.Get;
-            } else if (std.mem.eql(u8, raw_method, "POST")) {
-                break :blk Method.Post;
-            } else {
-                break :blk Method { .Custom = raw_method };
+        var method = for (requestLine) |char, i| {
+            if (char == ' ') {
+                cursor += i + 1;
+                var value = try Method.from_bytes(requestLine[0..i]);
+                break value;
             }
+        } else {
+            return error.Invalid;
         };
 
-        const target = try readUri(requestLine[raw_method.len + 1..]);
+        const target = try readUri(requestLine[cursor..]);
+        cursor += target.len + 1;
 
-        const version = Version.from_bytes(requestLine[raw_method.len + target.len + 2..]) orelse return error.Invalid;
+        const version = Version.from_bytes(requestLine[cursor..]) orelse return error.Invalid;
         if (version != .Http11) {
             return error.Invalid;
         }
 
         var _headers = try parse_headers(allocator, buffer[requestLine.len + 2..], 128);
 
-        return Request{
+        return Request {
             .headers = _headers,
             .version = version,
             .method = method,
