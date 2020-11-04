@@ -18,18 +18,24 @@ pub const Request = struct {
 
     pub const Error = error {
         MissingHost,
+        TooManyHost,
     };
 
     pub fn init(method: Method, target: []const u8, version: Version, headers: Headers) Error!Request {
-        if (version == .Http11) {
-            // A single 'Host' header is mandatory for HTTP/1.1
-            // Cf: https://tools.ietf.org/html/rfc7230#section-5.4
-            _ = headers.get("Host") orelse return error.MissingHost;
-            //TODO:
-            // When 'HeaderMap' will be a proper multimap
-            // return an error when the request contains multiple 'Host' headers.
+        // A single 'Host' header is mandatory for HTTP/1.1
+        // Cf: https://tools.ietf.org/html/rfc7230#section-5.4
+        var hostCount: u32 = 0;
+        for(headers.items()) |header| {
+            if (header.name.type == .Host) {
+                hostCount += 1;
+            }
         }
-
+        if (hostCount == 0 and version == .Http11) {
+            return error.MissingHost;
+        }
+        if (hostCount > 1) {
+            return error.TooManyHost;
+        }
         return Request {
             .method = method,
             .target = target,
@@ -101,7 +107,7 @@ pub const Request = struct {
 const expect = std.testing.expect;
 const expectError = std.testing.expectError;
 
-test "Init - A HTTP/1.1 request must contain a 'Host' header" {
+test "Init - An HTTP/1.1 request must contain a 'Host' header" {
     var headers = Headers.init(std.testing.allocator);
     defer headers.deinit();
 
@@ -109,11 +115,21 @@ test "Init - A HTTP/1.1 request must contain a 'Host' header" {
     expectError(error.MissingHost, request);
 }
 
-test "Init - A HTTP/1.0 request may not contain a 'Host' header" {
+test "Init - An HTTP/1.0 request may not contain a 'Host' header" {
     var headers = Headers.init(std.testing.allocator);
     defer headers.deinit();
 
     var request = try Request.init(Method.Get, "/news/", Version.Http10, headers);
+}
+
+test "Init - A request must not contain multiple 'Host' header" {
+    var headers = Headers.init(std.testing.allocator);
+    _ = try headers.append("Host", "ziglang.org");
+    _ = try headers.append("Host", "ziglang.org");
+    defer headers.deinit();
+
+    var request = Request.init(Method.Get, "/news/", Version.Http11, headers);
+    expectError(error.TooManyHost, request);
 }
 
 test "Serialize" {
