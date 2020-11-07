@@ -6,7 +6,7 @@ addons:
     snaps:
         - name: zig
           confinement: classic
-          channel: beta
+          channel: edge
 
 language: c
 

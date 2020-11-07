@@ -60,7 +60,6 @@ pub const BodyReader = union(BodyReaderType) {
         return switch(self.*) {
             .ContentLength => |*reader| reader.read(buffer),
             .NoContent => .EndOfMessage,
-            else => unreachable,
         };
     }
 
