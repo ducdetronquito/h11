@@ -83,7 +83,7 @@ test "Parse - Missing reason phrase" {
 }
 
 test "Issue #28: Parse - Status code below 100 and above 599 are invalid" {
-    const failure = Response.parse(std.testing.allocator, "HTTP/1.1 99\r\n\r\n\r\n");
+    var failure = Response.parse(std.testing.allocator, "HTTP/1.1 99\r\n\r\n\r\n");
     expectError(error.Invalid, failure);
 
     failure = Response.parse(std.testing.allocator, "HTTP/1.1 600\r\n\r\n\r\n");
