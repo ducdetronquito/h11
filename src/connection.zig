@@ -1,12 +1,12 @@
 const Allocator = std.mem.Allocator;
 const BodyReader = @import("readers.zig").BodyReader;
 const Buffer = @import("buffer.zig").Buffer;
-pub const ClientSM = @import("state_machines/client.zig").ClientSM;
+const ClientSM = @import("state_machines/client.zig").ClientSM;
 const Event = @import("events.zig").Event;
 const Method = @import("http").Method;
 const Response = @import("events.zig").Response;
-pub const ServerSM = @import("state_machines/server.zig").ServerSM;
-pub const SMError = @import("state_machines/errors.zig").SMError;
+const ServerSM = @import("state_machines/server.zig").ServerSM;
+const SMError = @import("state_machines/errors.zig").SMError;
 const std = @import("std");
 
 
@@ -15,6 +15,8 @@ pub const Client = struct {
     localState: ClientSM,
     remoteState: ServerSM,
     sentRequestMethod: ?Method,
+
+    const Error = SMError;
 
     pub fn init(allocator: *Allocator) Client {
         var localState = ClientSM.init(allocator);
@@ -32,7 +34,7 @@ pub const Client = struct {
         self.buffer.deinit();
     }
 
-    pub fn send(self: *Client, event: Event) SMError![]const u8 {
+    pub fn send(self: *Client, event: Event) Error![]const u8 {
         var bytes = try self.localState.send(event);
         switch(event) {
             .Request => |request| self.sentRequestMethod = request.method,
@@ -45,7 +47,7 @@ pub const Client = struct {
         try self.buffer.appendSlice(data);
     }
 
-    pub fn nextEvent(self: *Client) SMError!Event {
+    pub fn nextEvent(self: *Client) Error!Event {
         var event = try self.remoteState.nextEvent(&self.buffer);
 
         switch (event) {
@@ -61,7 +63,7 @@ pub const Client = struct {
     // Cf: RFC 7230 - 3.3 Message Boddy
     // https://tools.ietf.org/html/rfc7230#section-3.3
     // https://tools.ietf.org/html/rfc7230#section-3.3.3
-    pub fn frameResponseBody(self: *Client, response: Response) SMError!void {
+    pub fn frameResponseBody(self: *Client, response: Response) Error!void {
         var reader = try BodyReader.frame(self.sentRequestMethod.?, response);
         self.remoteState.defineBodyReader(reader);
     }
