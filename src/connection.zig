@@ -31,7 +31,19 @@ pub const Client = struct {
     }
 
     pub fn deinit(self: *Client) void {
+        self.resetStates();
         self.buffer.deinit();
+    }
+
+    // The caller owns the returned memory
+    pub fn toOwnedSlice(self: *Client) []const u8 {
+        self.resetStates();
+        return self.buffer.toOwnedSlice();
+    }
+
+    fn resetStates(self: *Client) void {
+        self.localState.reset();
+        self.remoteState.reset();
     }
 
     pub fn send(self: *Client, event: Event) Error![]const u8 {
@@ -74,6 +86,29 @@ const expect = std.testing.expect;
 const expectError = std.testing.expectError;
 const Headers = @import("http").Headers;
 const Request = @import("events.zig").Request;
+
+test "Deinit" {
+    var client = Client.init(std.testing.allocator);
+    client.deinit();
+
+    expect(client.buffer.cursor == 0);
+    expect(client.buffer.data.items.len == 0);
+    expect(client.localState.state == .Idle);
+    expect(client.remoteState.state == .Idle);
+}
+
+test "ToOwnedSlice" {
+    var client = Client.init(std.testing.allocator);
+    try client.receive("Gotta go fast!");
+    var buffer = client.toOwnedSlice();
+    defer std.testing.allocator.free(buffer);
+
+    expect(client.buffer.cursor == 0);
+    expect(client.buffer.data.items.len == 0);
+    expect(client.localState.state == .Idle);
+    expect(client.remoteState.state == .Idle);
+    expect(std.mem.eql(u8, buffer, "Gotta go fast!"));
+}
 
 test "Send - Client can send an event" {
     var client = Client.init(std.testing.allocator);

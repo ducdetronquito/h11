@@ -18,6 +18,12 @@ pub const Buffer = struct {
         self.data.deinit();
     }
 
+    // The caller owns the returned memory
+    pub inline fn toOwnedSlice(self: *Buffer) []u8 {
+        self.cursor = 0;
+        return self.data.toOwnedSlice();
+    }
+
     pub const Error = error {
         EndOfStream,
     };

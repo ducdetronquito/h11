@@ -24,6 +24,11 @@ pub const ServerSM = struct {
         };
     }
 
+    pub fn reset(self: *ServerSM) void {
+        self.state = State.Idle;
+        self.body_reader = BodyReader { .ContentLength = ContentLengthReader.init(0) };
+    }
+
     pub fn defineBodyReader(self: *ServerSM, body_reader: BodyReader) void {
         self.body_reader = body_reader;
     }

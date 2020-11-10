@@ -17,6 +17,10 @@ pub const ClientSM = struct {
         return ClientSM { .allocator = allocator, .state = State.Idle};
     }
 
+    pub fn reset(self: *ClientSM) void {
+        self.state = State.Idle;
+    }
+
     pub fn send(self: *ClientSM, event: Event) SMError![]const u8 {
         return switch (self.state) {
             .Idle => self.sendRequest(event),
