@@ -17,7 +17,7 @@ pub const ClientSM = struct {
         return ClientSM { .allocator = allocator, .state = State.Idle};
     }
 
-    pub fn reset(self: *ClientSM) void {
+    pub fn deinit(self: *ClientSM) void {
         self.state = State.Idle;
     }
 
