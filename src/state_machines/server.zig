@@ -5,6 +5,8 @@ const ContentLengthReader = @import("../readers.zig").ContentLengthReader;
 const Data = @import("../events.zig").Data;
 const events = @import("../events.zig");
 const Event = events.Event;
+const Method = @import("http").Method;
+const Response = @import("../events.zig").Response;
 const SMError = @import("errors.zig").SMError;
 const State = @import("states.zig").State;
 const StatusCode = @import("http").StatusCode;
@@ -15,6 +17,7 @@ pub const ServerSM = struct {
     allocator: *Allocator,
     body_reader: BodyReader,
     response_buffer: Buffer,
+    sentRequestMethod: ?Method,
     state: State,
 
     pub fn init(allocator: *Allocator) ServerSM {
@@ -22,6 +25,7 @@ pub const ServerSM = struct {
             .allocator = allocator,
             .body_reader = BodyReader { .ContentLength = ContentLengthReader.init(0) },
             .response_buffer = Buffer.init(allocator),
+            .sentRequestMethod = null,
             .state = State.Idle,
         };
     }
@@ -34,10 +38,6 @@ pub const ServerSM = struct {
 
     pub fn getResponseBuffer(self: *ServerSM) []const u8 {
         return self.response_buffer.toOwnedSlice();
-    }
-
-    pub fn defineBodyReader(self: *ServerSM, body_reader: BodyReader) void {
-        self.body_reader = body_reader;
     }
 
     pub fn receive(self: *ServerSM, data: []const u8) !void {
@@ -91,6 +91,12 @@ pub const ServerSM = struct {
         };
 
         var event = events.Response.init(response.headers, response.statusCode, Version.Http11);
+        errdefer event.deinit();
+
+        // Cf: RFC 7230 - 3.3 Message Boddy
+        // https://tools.ietf.org/html/rfc7230#section-3.3
+        // https://tools.ietf.org/html/rfc7230#section-3.3.3
+        self.body_reader = try BodyReader.frame(self.sentRequestMethod.?, response);
 
         return Event { .Response = event};
     }
@@ -103,6 +109,7 @@ const expectError = std.testing.expectError;
 test "NextEvent - Can retrieve a Response event when state is Idle" {
     var server = ServerSM.init(std.testing.allocator);
     defer server.deinit();
+    server.sentRequestMethod = .Get;
     try server.receive("HTTP/1.1 200 OK\r\nServer: Apache\r\nContent-Length: 0\r\n\r\n");
 
     var event = try server.nextEvent();
@@ -148,24 +155,6 @@ test "NextEvent - Move into the error state when failing to retrieve a Response 
     var event = server.nextEvent();
 
     expect(server.state == .Error);
-}
-
-test "NextEvent - Retrieve a Response event when state is Idle" {
-    var server = ServerSM.init(std.testing.allocator);
-    defer server.deinit();
-    try server.receive("HTTP/1.1 200 OK\r\nServer: Apache\r\nContent-Length: 0\r\n\r\n");
-
-    var event = try server.nextEvent();
-
-    switch (event) {
-        .Response => |response| {
-            expect(response.statusCode == .Ok);
-            expect(response.version == .Http11);
-            response.deinit();
-        },
-        else => unreachable,
-    }
-    expect(server.state == .SendBody);
 }
 
 test "NextEvent - Retrieve a Data event when state is SendBody." {

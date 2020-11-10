@@ -1,9 +1,6 @@
 const Allocator = std.mem.Allocator;
-const BodyReader = @import("readers.zig").BodyReader;
 const ClientSM = @import("state_machines/client.zig").ClientSM;
 const Event = @import("events.zig").Event;
-const Method = @import("http").Method;
-const Response = @import("events.zig").Response;
 const ServerSM = @import("state_machines/server.zig").ServerSM;
 const SMError = @import("state_machines/errors.zig").SMError;
 const std = @import("std");
@@ -12,7 +9,6 @@ const std = @import("std");
 pub const Client = struct {
     localState: ClientSM,
     remoteState: ServerSM,
-    sentRequestMethod: ?Method,
 
     const Error = SMError;
 
@@ -23,14 +19,12 @@ pub const Client = struct {
         return Client {
             .localState = localState,
             .remoteState = remoteState,
-            .sentRequestMethod = null,
         };
     }
 
     pub fn deinit(self: *Client) void {
         self.localState.deinit();
         self.remoteState.deinit();
-        self.sentRequestMethod = null;
     }
 
     pub fn getResponseBuffer(self: *Client) []const u8 {
@@ -40,7 +34,9 @@ pub const Client = struct {
     pub fn send(self: *Client, event: Event) Error![]const u8 {
         var bytes = try self.localState.send(event);
         switch(event) {
-            .Request => |request| self.sentRequestMethod = request.method,
+            .Request => |request| {
+                self.remoteState.sentRequestMethod = request.method;
+            },
             else => {}
         }
         return bytes;
@@ -51,24 +47,7 @@ pub const Client = struct {
     }
 
     pub fn nextEvent(self: *Client) Error!Event {
-        var event = try self.remoteState.nextEvent();
-
-        switch (event) {
-            .Response => |response| {
-                errdefer response.deinit();
-                try self.frameResponseBody(response);
-            },
-            else => {},
-        }
-        return event;
-    }
-
-    // Cf: RFC 7230 - 3.3 Message Boddy
-    // https://tools.ietf.org/html/rfc7230#section-3.3
-    // https://tools.ietf.org/html/rfc7230#section-3.3.3
-    pub fn frameResponseBody(self: *Client, response: Response) Error!void {
-        var reader = try BodyReader.frame(self.sentRequestMethod.?, response);
-        self.remoteState.defineBodyReader(reader);
+        return self.remoteState.nextEvent();
     }
 };
 
@@ -100,7 +79,7 @@ test "Send - Remember the request method when sending a request event" {
     var bytes = try client.send(Event {.Request = request });
     std.testing.allocator.free(bytes);
 
-    expect(client.sentRequestMethod.? == .Get);
+    expect(client.remoteState.sentRequestMethod.? == .Get);
 }
 
 test "NextEvent" {
@@ -114,7 +93,7 @@ test "NextEvent" {
 test "NextEvent - Fail to return a Response event when the content length is invalid." {
     var client = Client.init(std.testing.allocator);
     defer client.deinit();
-    client.sentRequestMethod = .Get;
+    client.remoteState.sentRequestMethod = .Get;
 
     try client.receive("HTTP/1.1 200 OK\r\nContent-Length: XXX\r\n\r\n");
     var event = client.nextEvent();
@@ -125,7 +104,7 @@ test "NextEvent - Fail to return a Response event when the content length is inv
 test "NextEvent - A Response event with no content length must be followed by an EndOfMessage event." {
     var client = Client.init(std.testing.allocator);
     defer client.deinit();
-    client.sentRequestMethod = .Get;
+    client.remoteState.sentRequestMethod = .Get;
 
     try client.receive("HTTP/1.1 200 OK\r\n\r\n");
     var event = try client.nextEvent();
@@ -138,7 +117,7 @@ test "NextEvent - A Response event with no content length must be followed by an
 test "NextEvent - A Response event with a content length muste be followed by a Data event and an EndOfMessage event." {
     var client = Client.init(std.testing.allocator);
     defer client.deinit();
-    client.sentRequestMethod = .Get;
+    client.remoteState.sentRequestMethod = .Get;
     try client.receive("HTTP/1.1 200 OK\r\nContent-Length: 34\r\n\r\nAin't no sunshine when she's gone.");
 
     var event = try client.nextEvent();
