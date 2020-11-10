@@ -103,7 +103,7 @@ test "Send - Cannot send any other event when state is Idle" {
 test "Send - Can send a Data event when state is SendBody" {
     var client = ClientSM.init(std.testing.allocator);
     client.state = .SendBody;
-    var dataEvent = Data {.content = "It's raining outside, damned Brittany !"};
+    var dataEvent = Data { .allocator = null, .content = "It's raining outside, damned Brittany !"};
 
     var result = try client.send(Event {.Data = dataEvent});
 

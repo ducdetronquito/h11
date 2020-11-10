@@ -16,6 +16,7 @@ const Version = @import("http").Version;
 pub const ServerSM = struct {
     allocator: *Allocator,
     body_reader: BodyReader,
+    body_buffer: Buffer,
     response_buffer: Buffer,
     sentRequestMethod: ?Method,
     state: State,
@@ -24,6 +25,7 @@ pub const ServerSM = struct {
         return ServerSM {
             .allocator = allocator,
             .body_reader = BodyReader { .ContentLength = ContentLengthReader.init(0) },
+            .body_buffer = Buffer.init(allocator),
             .response_buffer = Buffer.init(allocator),
             .sentRequestMethod = null,
             .state = State.Idle,
@@ -31,9 +33,10 @@ pub const ServerSM = struct {
     }
 
     pub fn deinit(self: *ServerSM) void {
-        self.state = State.Idle;
         self.body_reader = BodyReader { .ContentLength = ContentLengthReader.init(0) };
+        self.body_buffer.deinit();
         self.response_buffer.deinit();
+        self.state = State.Idle;
     }
 
     pub fn getResponseBuffer(self: *ServerSM) []const u8 {
@@ -41,7 +44,39 @@ pub const ServerSM = struct {
     }
 
     pub fn receive(self: *ServerSM, data: []const u8) !void {
-        try self.response_buffer.appendSlice(data);
+        if (self.state != .Idle) {
+            return try self.body_buffer.appendSlice(data);
+        }
+
+        var response = self.readUntilBlankLine(data);
+        if (response) |value|{
+            try self.response_buffer.appendSlice(value);
+            var body = data[value.len..];
+            try self.body_buffer.appendSlice(body);
+        } else {
+            try self.response_buffer.appendSlice(data);
+        }
+    }
+
+    fn readUntilBlankLine(self: ServerSM, data: []const u8) ?[]const u8 {
+        var i: usize = 0;
+        while(i < data.len) {
+            if (data[i] != '\r') {
+                i += 1;
+                continue;
+            }
+
+            if (data.len - i < 4) {
+                return null;
+            }
+
+            i += 4;
+            if (std.mem.eql(u8, data[i-3..i], "\n\r\n")) {
+                return data[0..i];
+            }
+        }
+
+        return null;
     }
 
     pub fn nextEvent(self: *ServerSM) SMError!Event {
@@ -79,26 +114,34 @@ pub const ServerSM = struct {
     }
 
     fn readData(self: *ServerSM) SMError!Event {
-        return try self.body_reader.read(&self.response_buffer);
+        var event = try self.body_reader.read(&self.body_buffer);
+        switch(event) {
+            .Data => |*data| {
+                data.content = self.body_buffer.toOwnedSlice();
+            },
+            else => {},
+        }
+        return event;
     }
 
     fn readResponse(self: *ServerSM) SMError!Event {
-        var pos = self.response_buffer.findBlankLine() orelse return error.NeedData;
-        var data = self.response_buffer.read(pos + 4) catch return error.NeedData;
+        var data = self.response_buffer.toSlice();
+        if (data.len < 4 or !std.mem.eql(u8, data[data.len-4..], "\r\n\r\n")) {
+            return error.NeedData;
+        }
 
         var response = events.Response.parse(self.allocator, data) catch {
             return error.RemoteProtocolError;
         };
-
-        var event = events.Response.init(response.headers, response.statusCode, Version.Http11);
-        errdefer event.deinit();
+        errdefer response.headers.deinit();
 
         // Cf: RFC 7230 - 3.3 Message Boddy
         // https://tools.ietf.org/html/rfc7230#section-3.3
         // https://tools.ietf.org/html/rfc7230#section-3.3.3
-        self.body_reader = try BodyReader.frame(self.sentRequestMethod.?, response);
+        self.body_reader = try BodyReader.frame(self.sentRequestMethod.?, response.statusCode, response.headers);
 
-        return Event { .Response = event};
+        response.raw_bytes = self.response_buffer.toOwnedSlice();
+        return Event { .Response = response};
     }
 };
 
@@ -111,6 +154,25 @@ test "NextEvent - Can retrieve a Response event when state is Idle" {
     defer server.deinit();
     server.sentRequestMethod = .Get;
     try server.receive("HTTP/1.1 200 OK\r\nServer: Apache\r\nContent-Length: 0\r\n\r\n");
+
+    var event = try server.nextEvent();
+
+    switch (event) {
+        .Response => |response| {
+            expect(response.statusCode == .Ok);
+            expect(response.version == .Http11);
+            response.deinit();
+        },
+        else => unreachable,
+    }
+    expect(server.state == .SendBody);
+}
+
+test "NextEvent - Can retrieve a Response event when state is Idle with the payload" {
+    var server = ServerSM.init(std.testing.allocator);
+    defer server.deinit();
+    server.sentRequestMethod = .Get;
+    try server.receive("HTTP/1.1 200 OK\r\nServer: Apache\r\nContent-Length: 14\r\n\r\nGotta go fast!");
 
     var event = try server.nextEvent();
 
@@ -164,9 +226,9 @@ test "NextEvent - Retrieve a Data event when state is SendBody." {
     server.body_reader = BodyReader { .ContentLength = ContentLengthReader.init(34) };
     try server.receive("Ain't no sunshine when she's gone.");
 
-    var dataEvent = try server.nextEvent();
-
-    switch (dataEvent) {
+    var data_event = try server.nextEvent();
+    defer data_event.deinit();
+    switch (data_event) {
         .Data => |data| {
             expect(std.mem.eql(u8, data.content, "Ain't no sunshine when she's gone."));
         },
@@ -206,4 +268,15 @@ test "NextEvent - Retrieve a ConnectionClosed event when state is Closed" {
 
     expect(event.isConnectionClosed());
     expect(server.state == .Closed);
+}
+
+test "NextEvent - Fail to return a Response event when the content length is invalid." {
+    var server = ServerSM.init(std.testing.allocator);
+    defer server.deinit();
+    server.sentRequestMethod = .Get;
+
+    try server.receive("HTTP/1.1 200 OK\r\nContent-Length: XXX\r\n\r\n");
+    var event = server.nextEvent();
+
+    expectError(error.RemoteProtocolError, event);
 }
