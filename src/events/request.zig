@@ -44,6 +44,15 @@ pub const Request = struct {
         };
     }
 
+    pub fn default(allocator: *Allocator) Request {
+        return Request {
+            .method = .Get,
+            .target = "/",
+            .version = .Http11,
+            .headers = Headers.init(allocator),
+        };
+    }
+
     pub fn deinit(self: *Request) void {
         self.headers.deinit();
     }

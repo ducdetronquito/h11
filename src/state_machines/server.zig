@@ -6,6 +6,7 @@ const Data = @import("../events.zig").Data;
 const events = @import("../events.zig");
 const Event = events.Event;
 const Method = @import("http").Method;
+const Request = @import("../events.zig").Request;
 const Response = @import("../events.zig").Response;
 const SMError = @import("errors.zig").SMError;
 const State = @import("states.zig").State;
@@ -19,8 +20,8 @@ pub const ServerSM = struct {
     allocator: *Allocator,
     body_reader: BodyReader,
     body_buffer: Buffer,
+    expected_request: ?Request,
     response_buffer: Buffer,
-    sentRequestMethod: ?Method,
     state: State,
 
     pub fn init(allocator: *Allocator) ServerSM {
@@ -28,8 +29,8 @@ pub const ServerSM = struct {
             .allocator = allocator,
             .body_reader = BodyReader { .ContentLength = ContentLengthReader.init(0) },
             .body_buffer = Buffer.init(allocator),
+            .expected_request = null,
             .response_buffer = Buffer.init(allocator),
-            .sentRequestMethod = null,
             .state = State.Idle,
         };
     }
@@ -37,8 +38,18 @@ pub const ServerSM = struct {
     pub fn deinit(self: *ServerSM) void {
         self.body_reader = BodyReader { .ContentLength = ContentLengthReader.init(0) };
         self.body_buffer.deinit();
+        self.expected_request = null;
         self.response_buffer.deinit();
         self.state = State.Idle;
+    }
+
+    pub fn expectEvent(self: *ServerSM, event: Event) void {
+        switch(event) {
+            .Request => |request| {
+                self.expected_request = request;
+            },
+            else => {},
+        }
     }
 
     pub fn receive(self: *ServerSM, data: []const u8) !void {
@@ -105,7 +116,7 @@ pub const ServerSM = struct {
         };
         errdefer response.headers.deinit();
 
-        self.body_reader = try BodyReader.frame(self.sentRequestMethod.?, response.statusCode, response.headers);
+        self.body_reader = try BodyReader.frame(self.expected_request.?.method, response.statusCode, response.headers);
 
         response.raw_bytes = self.response_buffer.toOwnedSlice();
         return Event { .Response = response};
@@ -115,13 +126,17 @@ pub const ServerSM = struct {
 
 const expect = std.testing.expect;
 const expectError = std.testing.expectError;
+const Headers = @import("http").Headers;
 
 test "NextEvent - Can retrieve a Response event when state is Idle" {
     var server = ServerSM.init(std.testing.allocator);
     defer server.deinit();
-    server.sentRequestMethod = .Get;
-    try server.receive("HTTP/1.1 200 OK\r\nServer: Apache\r\nContent-Length: 0\r\n\r\n");
 
+    var request = Request.default(std.testing.allocator);
+    defer request.deinit();
+    server.expectEvent(Event {.Request = request});
+
+    try server.receive("HTTP/1.1 200 OK\r\nServer: Apache\r\nContent-Length: 0\r\n\r\n");
     var event = try server.nextEvent();
 
     switch (event) {
@@ -138,7 +153,11 @@ test "NextEvent - Can retrieve a Response event when state is Idle" {
 test "NextEvent - Can retrieve a Response event when state is Idle with the payload" {
     var server = ServerSM.init(std.testing.allocator);
     defer server.deinit();
-    server.sentRequestMethod = .Get;
+
+    var request = Request.default(std.testing.allocator);
+    defer request.deinit();
+    server.expectEvent(Event {.Request = request});
+
     try server.receive("HTTP/1.1 200 OK\r\nServer: Apache\r\nContent-Length: 14\r\n\r\nGotta go fast!");
 
     var event = try server.nextEvent();
@@ -240,7 +259,10 @@ test "NextEvent - Retrieve a ConnectionClosed event when state is Closed" {
 test "NextEvent - Fail to return a Response event when the content length is invalid." {
     var server = ServerSM.init(std.testing.allocator);
     defer server.deinit();
-    server.sentRequestMethod = .Get;
+
+    var request = Request.default(std.testing.allocator);
+    defer request.deinit();
+    server.expectEvent(Event {.Request = request});
 
     try server.receive("HTTP/1.1 200 OK\r\nContent-Length: XXX\r\n\r\n");
     var event = server.nextEvent();
