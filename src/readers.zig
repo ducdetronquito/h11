@@ -37,7 +37,7 @@ pub const ContentLengthReader  = struct {
         }
 
         self.remaining_bytes = 0;
-        return Event { .Data = Data {.allocator = buffer.allocator, .content = buffer.toOwnedSlice() } };
+        return Data.to_event(buffer.allocator, buffer.toOwnedSlice());
     }
 };
 
