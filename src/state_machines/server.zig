@@ -14,7 +14,6 @@ const std = @import("std");
 const utils = @import("utils.zig");
 const Version = @import("http").Version;
 
-
 pub const ServerSM = struct {
     allocator: *Allocator,
     body_reader: BodyReader,
@@ -24,7 +23,7 @@ pub const ServerSM = struct {
     state: State,
 
     pub fn init(allocator: *Allocator) ServerSM {
-        return ServerSM {
+        return ServerSM{
             .allocator = allocator,
             .body_reader = BodyReader.default(),
             .body_buffer = Buffer.init(allocator),
@@ -43,7 +42,7 @@ pub const ServerSM = struct {
     }
 
     pub fn expectEvent(self: *ServerSM, event: Event) void {
-        switch(event) {
+        switch (event) {
             .Request => |request| {
                 self.expected_request = request;
             },
@@ -57,7 +56,7 @@ pub const ServerSM = struct {
         }
 
         var response = utils.readUntilBlankLine(data);
-        if (response) |value|{
+        if (response) |value| {
             try self.response_buffer.appendSlice(value);
             var body = data[value.len..];
             try self.body_buffer.appendSlice(body);
@@ -67,14 +66,14 @@ pub const ServerSM = struct {
     }
 
     pub fn nextEvent(self: *ServerSM) SMError!Event {
-        return switch(self.state) {
+        return switch (self.state) {
             .Idle => {
-                var event = self.readResponse() catch |err| switch(err) {
+                var event = self.readResponse() catch |err| switch (err) {
                     error.NeedData => return err,
                     else => {
                         self.state = .Error;
                         return err;
-                    }
+                    },
                 };
                 self.state = .SendBody;
                 return event;
@@ -96,7 +95,7 @@ pub const ServerSM = struct {
             else => {
                 self.state = .Error;
                 return error.RemoteProtocolError;
-            }
+            },
         };
     }
 
@@ -106,7 +105,7 @@ pub const ServerSM = struct {
 
     fn readResponse(self: *ServerSM) SMError!Event {
         var data = self.response_buffer.items;
-        if (data.len < 4 or !std.mem.eql(u8, data[data.len-4..], "\r\n\r\n")) {
+        if (data.len < 4 or !std.mem.eql(u8, data[data.len - 4 ..], "\r\n\r\n")) {
             return error.NeedData;
         }
 
@@ -118,10 +117,9 @@ pub const ServerSM = struct {
         self.body_reader = try BodyReader.frame(self.expected_request.?.method, response.statusCode, response.headers);
 
         response.raw_bytes = self.response_buffer.toOwnedSlice();
-        return Event { .Response = response};
+        return Event{ .Response = response };
     }
 };
-
 
 const expect = std.testing.expect;
 const expectError = std.testing.expectError;
@@ -133,7 +131,7 @@ test "NextEvent - Can retrieve a Response event when state is Idle" {
 
     var request = Request.default(std.testing.allocator);
     defer request.deinit();
-    server.expectEvent(Event {.Request = request});
+    server.expectEvent(Event{ .Request = request });
 
     try server.receive("HTTP/1.1 200 OK\r\nServer: Apache\r\nContent-Length: 0\r\n\r\n");
     var event = try server.nextEvent();
@@ -155,7 +153,7 @@ test "NextEvent - Can retrieve a Response event when state is Idle with the payl
 
     var request = Request.default(std.testing.allocator);
     defer request.deinit();
-    server.expectEvent(Event {.Request = request});
+    server.expectEvent(Event{ .Request = request });
 
     try server.receive("HTTP/1.1 200 OK\r\nServer: Apache\r\nContent-Length: 14\r\n\r\nGotta go fast!");
 
@@ -261,7 +259,7 @@ test "NextEvent - Fail to return a Response event when the content length is inv
 
     var request = Request.default(std.testing.allocator);
     defer request.deinit();
-    server.expectEvent(Event {.Request = request});
+    server.expectEvent(Event{ .Request = request });
 
     try server.receive("HTTP/1.1 200 OK\r\nContent-Length: XXX\r\n\r\n");
     var event = server.nextEvent();

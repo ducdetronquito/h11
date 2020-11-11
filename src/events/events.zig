@@ -18,7 +18,7 @@ pub const Event = union(EventType) {
     Response: Response,
 
     pub fn deinit(self: Event) void {
-        switch(self) {
+        switch (self) {
             .Response => |response| {
                 response.deinit();
             },
@@ -30,28 +30,28 @@ pub const Event = union(EventType) {
     }
 
     pub fn isResponse(self: Event) bool {
-        return switch(self) {
+        return switch (self) {
             .Response => true,
             else => false,
         };
     }
 
     pub fn isData(self: Event) bool {
-        return switch(self) {
+        return switch (self) {
             .Data => true,
             else => false,
         };
     }
 
     pub fn isEndOfMessage(self: Event) bool {
-        return switch(self) {
+        return switch (self) {
             .EndOfMessage => true,
             else => false,
         };
     }
 
     pub fn isConnectionClosed(self: Event) bool {
-        return switch(self) {
+        return switch (self) {
             .ConnectionClosed => true,
             else => false,
         };

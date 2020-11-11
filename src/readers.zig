@@ -7,19 +7,18 @@ const Method = @import("http").Method;
 const Response = @import("events/events.zig").Response;
 const StatusCode = @import("http").StatusCode;
 
-pub const Error = error {
+pub const Error = error{
     NeedData,
     RemoteProtocolError,
 };
 
-
-pub const ContentLengthReader  = struct {
+pub const ContentLengthReader = struct {
     expectedLength: usize,
     remaining_bytes: usize,
 
     pub fn init(expectedLength: usize) BodyReader {
-        return BodyReader {
-            .ContentLength = ContentLengthReader { .expectedLength = expectedLength, .remaining_bytes = expectedLength }
+        return BodyReader{
+            .ContentLength = ContentLengthReader{ .expectedLength = expectedLength, .remaining_bytes = expectedLength },
         };
     }
 
@@ -41,30 +40,28 @@ pub const ContentLengthReader  = struct {
     }
 };
 
-
 pub const BodyReaderType = enum {
     ContentLength,
     NoContent,
 };
-
 
 pub const BodyReader = union(BodyReaderType) {
     ContentLength: ContentLengthReader,
     NoContent: void,
 
     pub fn default() BodyReader {
-        return BodyReader { .NoContent = undefined };
+        return BodyReader{ .NoContent = undefined };
     }
 
     pub fn expectedLength(self: BodyReader) usize {
-        return switch(self) {
+        return switch (self) {
             .ContentLength => |reader| reader.expectedLength,
             else => unreachable,
         };
     }
 
     pub fn read(self: *BodyReader, buffer: *Buffer) Error!Event {
-        return switch(self.*) {
+        return switch (self.*) {
             .ContentLength => |*reader| reader.read(buffer),
             .NoContent => .EndOfMessage,
         };
@@ -76,22 +73,13 @@ pub const BodyReader = union(BodyReaderType) {
     // - Handle transfert encoding (chunked, compress, deflate, gzip)
     pub fn frame(requestMethod: Method, status_code: StatusCode, headers: Headers) !BodyReader {
         var rawStatusCode = @enumToInt(status_code);
-        const hasNoContent = (
-            requestMethod == .Head
-            or rawStatusCode < 200
-            or status_code == .NoContent
-            or status_code == .NotModified
-        );
+        const hasNoContent = (requestMethod == .Head or rawStatusCode < 200 or status_code == .NoContent or status_code == .NotModified);
 
         if (hasNoContent) {
             return .NoContent;
         }
 
-        const isSuccessfulConnectRequest = (
-            rawStatusCode < 300
-            and rawStatusCode > 199
-            and requestMethod == .Connect
-        );
+        const isSuccessfulConnectRequest = (rawStatusCode < 300 and rawStatusCode > 199 and requestMethod == .Connect);
         if (isSuccessfulConnectRequest) {
             return .NoContent;
         }
@@ -106,7 +94,6 @@ pub const BodyReader = union(BodyReaderType) {
         return ContentLengthReader.init(contentLength);
     }
 };
-
 
 const expect = std.testing.expect;
 
@@ -149,4 +136,3 @@ test "Frame Body - A successful response (2XX) to a CONNECT request has no conte
 
     expect(reader == .NoContent);
 }
-

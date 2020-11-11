@@ -7,7 +7,6 @@ const StatusCode = @import("http").StatusCode;
 const std = @import("std");
 const Version = @import("http").Version;
 
-
 pub const Response = struct {
     allocator: *Allocator,
     headers: Headers,
@@ -28,7 +27,7 @@ pub const Response = struct {
         }
 
         const httpVersion = Version.from_bytes(statusLine[0..8]) orelse return error.Invalid;
-        switch(httpVersion) {
+        switch (httpVersion) {
             .Http11 => {},
             else => return error.Invalid,
         }
@@ -44,7 +43,7 @@ pub const Response = struct {
             return error.Invalid;
         }
 
-        var _headers = try parse_headers(allocator, buffer[statusLine.len + 2..], 128);
+        var _headers = try parse_headers(allocator, buffer[statusLine.len + 2 ..], 128);
         return Response{
             .allocator = allocator,
             .headers = _headers,
@@ -54,7 +53,6 @@ pub const Response = struct {
         };
     }
 };
-
 
 const expect = std.testing.expect;
 const expectError = std.testing.expectError;

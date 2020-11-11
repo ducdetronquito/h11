@@ -1,4 +1,4 @@
-pub const SMError = error {
+pub const SMError = error{
     LocalProtocolError,
     NeedData,
     OutOfMemory,

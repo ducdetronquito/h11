@@ -1,9 +1,8 @@
 const std = @import("std");
 
-
 pub fn readUntilBlankLine(data: []const u8) ?[]const u8 {
     var i: usize = 0;
-    while(i < data.len) {
+    while (i < data.len) {
         if (data[i] != '\r') {
             i += 1;
             continue;
@@ -14,7 +13,7 @@ pub fn readUntilBlankLine(data: []const u8) ?[]const u8 {
         }
 
         i += 4;
-        if (std.mem.eql(u8, data[i-3..i], "\n\r\n")) {
+        if (std.mem.eql(u8, data[i - 3 .. i], "\n\r\n")) {
             return data[0..i];
         }
     }

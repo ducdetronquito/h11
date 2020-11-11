@@ -6,7 +6,7 @@ pub const Data = struct {
     content: []const u8,
 
     pub fn to_event(allocator: ?*Allocator, content: []const u8) Event {
-        return Event { .Data = Data { .allocator = allocator, .content = content } };
+        return Event{ .Data = Data{ .allocator = allocator, .content = content } };
     }
 
     pub fn deinit(self: Data) void {

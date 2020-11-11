@@ -9,14 +9,13 @@ const readUri = @import("utils.zig").readUri;
 const std = @import("std");
 const Version = @import("http").Version;
 
-
 pub const Request = struct {
     method: Method,
     target: []const u8,
     version: Version,
     headers: Headers,
 
-    pub const Error = error {
+    pub const Error = error{
         MissingHost,
         TooManyHost,
     };
@@ -25,7 +24,7 @@ pub const Request = struct {
         // A single 'Host' header is mandatory for HTTP/1.1
         // Cf: https://tools.ietf.org/html/rfc7230#section-5.4
         var hostCount: u32 = 0;
-        for(headers.items()) |header| {
+        for (headers.items()) |header| {
             if (header.name.type == .Host) {
                 hostCount += 1;
             }
@@ -36,7 +35,7 @@ pub const Request = struct {
         if (hostCount > 1) {
             return error.TooManyHost;
         }
-        return Request {
+        return Request{
             .method = method,
             .target = target,
             .version = version,
@@ -45,7 +44,7 @@ pub const Request = struct {
     }
 
     pub fn default(allocator: *Allocator) Request {
-        return Request {
+        return Request{
             .method = .Get,
             .target = "/",
             .version = .Http11,
@@ -79,9 +78,9 @@ pub const Request = struct {
             return error.Invalid;
         }
 
-        var _headers = try parse_headers(allocator, buffer[requestLine.len + 2..], 128);
+        var _headers = try parse_headers(allocator, buffer[requestLine.len + 2 ..], 128);
 
-        return Request {
+        return Request{
             .headers = _headers,
             .version = version,
             .method = method,

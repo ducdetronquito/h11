@@ -1,4 +1,4 @@
-pub const ParsingError = error {
+pub const ParsingError = error{
     Incomplete,
     Invalid,
     OutOfMemory,

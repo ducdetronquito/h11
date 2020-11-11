@@ -5,7 +5,6 @@ const ServerSM = @import("state_machines/server.zig").ServerSM;
 const SMError = @import("state_machines/errors.zig").SMError;
 const std = @import("std");
 
-
 pub const Client = struct {
     localState: ClientSM,
     remoteState: ServerSM,
@@ -16,7 +15,7 @@ pub const Client = struct {
         var localState = ClientSM.init(allocator);
         var remoteState = ServerSM.init(allocator);
 
-        return Client {
+        return Client{
             .localState = localState,
             .remoteState = remoteState,
         };
@@ -42,12 +41,10 @@ pub const Client = struct {
     }
 };
 
-
 const expect = std.testing.expect;
 const expectError = std.testing.expectError;
 const Headers = @import("http").Headers;
 const Request = @import("events/events.zig").Request;
-
 
 test "Send - Client can send an event" {
     var client = Client.init(std.testing.allocator);
@@ -63,7 +60,7 @@ test "Send - Remember the request method when sending a request event" {
     defer client.deinit();
 
     var request = Request.default(std.testing.allocator);
-    var bytes = try client.send(Event {.Request = request });
+    var bytes = try client.send(Event{ .Request = request });
     std.testing.allocator.free(bytes);
 
     expect(client.remoteState.expected_request.?.method == .Get);
@@ -82,7 +79,7 @@ test "NextEvent - A Response event with no content length must be followed by an
     defer client.deinit();
 
     var request = Request.default(std.testing.allocator);
-    var bytes = try client.send(Event {.Request = request });
+    var bytes = try client.send(Event{ .Request = request });
     std.testing.allocator.free(bytes);
 
     try client.receive("HTTP/1.1 200 OK\r\n\r\n");
@@ -90,8 +87,8 @@ test "NextEvent - A Response event with no content length must be followed by an
     var event = try client.nextEvent();
     event.deinit();
 
-   event = try client.nextEvent();
-   expect(event == .EndOfMessage);
+    event = try client.nextEvent();
+    expect(event == .EndOfMessage);
 }
 
 test "NextEvent - A Response event with a content length muste be followed by a Data event and an EndOfMessage event." {
@@ -99,7 +96,7 @@ test "NextEvent - A Response event with a content length muste be followed by a 
     defer client.deinit();
 
     var request = Request.default(std.testing.allocator);
-    var bytes = try client.send(Event {.Request = request });
+    var bytes = try client.send(Event{ .Request = request });
     std.testing.allocator.free(bytes);
 
     try client.receive("HTTP/1.1 200 OK\r\nContent-Length: 34\r\n\r\nAin't no sunshine when she's gone.");
@@ -110,9 +107,9 @@ test "NextEvent - A Response event with a content length muste be followed by a 
 
     var data_event = try client.nextEvent();
     defer data_event.deinit();
-    switch(data_event) {
-        .Data => |data| expect(std.mem.eql(u8, data.content,"Ain't no sunshine when she's gone.")),
-        else => unreachable
+    switch (data_event) {
+        .Data => |data| expect(std.mem.eql(u8, data.content, "Ain't no sunshine when she's gone.")),
+        else => unreachable,
     }
 
     var end_of_message_event = try client.nextEvent();
@@ -123,13 +120,13 @@ test "Deinit - Response is not invalidated when the client is uninitialized." {
     var client = Client.init(std.testing.allocator);
 
     var request = Request.default(std.testing.allocator);
-    var bytes = try client.send(Event {.Request = request });
+    var bytes = try client.send(Event{ .Request = request });
     std.testing.allocator.free(bytes);
 
     try client.receive("HTTP/1.1 200 OK\r\nContent-Length: 34\r\n\r\nAin't no sunshine when she's gone.");
 
     var event = try client.nextEvent();
-    var response = switch(event) {
+    var response = switch (event) {
         .Response => |value| value,
         else => unreachable,
     };
@@ -148,7 +145,7 @@ test "Deinit - Response body is not invalidated when the client is uninitialized
     var client = Client.init(std.testing.allocator);
 
     var request = Request.default(std.testing.allocator);
-    var bytes = try client.send(Event {.Request = request });
+    var bytes = try client.send(Event{ .Request = request });
     std.testing.allocator.free(bytes);
 
     try client.receive("HTTP/1.1 200 OK\r\nContent-Length: 34\r\n\r\nAin't no sunshine when she's gone.");
@@ -157,7 +154,7 @@ test "Deinit - Response body is not invalidated when the client is uninitialized
     response_event.deinit();
 
     var event = try client.nextEvent();
-    var data = switch(event) {
+    var data = switch (event) {
         .Data => |value| value,
         else => unreachable,
     };
