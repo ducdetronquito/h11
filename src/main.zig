@@ -1,2 +1,2 @@
-usingnamespace @import("events.zig");
+usingnamespace @import("events/events.zig");
 pub const Client = @import("connection.zig").Client;

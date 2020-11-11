@@ -7,23 +7,17 @@ const StatusCode = @import("http").StatusCode;
 const std = @import("std");
 const Version = @import("http").Version;
 
-
 pub const Response = struct {
+    allocator: *Allocator,
     headers: Headers,
     statusCode: StatusCode,
     version: Version,
-
-    pub fn init(headers: Headers, statusCode: StatusCode, version: Version) Response {
-        return Response {
-            .headers = headers,
-            .statusCode = statusCode,
-            .version = version,
-        };
-    }
+    raw_bytes: []const u8,
 
     pub fn deinit(self: Response) void {
         var headers = self.headers;
         headers.deinit();
+        self.allocator.free(self.raw_bytes);
     }
 
     pub fn parse(allocator: *Allocator, buffer: []const u8) ParsingError!Response {
@@ -33,7 +27,7 @@ pub const Response = struct {
         }
 
         const httpVersion = Version.from_bytes(statusLine[0..8]) orelse return error.Invalid;
-        switch(httpVersion) {
+        switch (httpVersion) {
             .Http11 => {},
             else => return error.Invalid,
         }
@@ -49,33 +43,35 @@ pub const Response = struct {
             return error.Invalid;
         }
 
-        var _headers = try parse_headers(allocator, buffer[statusLine.len + 2..], 128);
+        var _headers = try parse_headers(allocator, buffer[statusLine.len + 2 ..], 128);
         return Response{
+            .allocator = allocator,
             .headers = _headers,
             .version = httpVersion,
             .statusCode = statusCode,
+            .raw_bytes = buffer,
         };
     }
 };
 
-
 const expect = std.testing.expect;
 const expectError = std.testing.expectError;
+const dupe = std.testing.allocator.dupe;
 
 test "Parse - Success" {
-    const content = "HTTP/1.1 200 OK\r\nServer: Apache\r\nContent-Length: 0\r\n\r\n";
+    var buffer = try dupe(u8, "HTTP/1.1 200 OK\r\nServer: Apache\r\nContent-Length: 0\r\n\r\n");
 
-    var response = try Response.parse(std.testing.allocator, content);
+    var response = try Response.parse(std.testing.allocator, buffer);
     defer response.deinit();
 
     expect(response.statusCode == .Ok);
     expect(response.version == .Http11);
-
     expect(response.headers.len() == 2);
 }
 
 test "Parse - Missing reason phrase" {
-    var response = try Response.parse(std.testing.allocator, "HTTP/1.1 200\r\n\r\n\r\n");
+    var buffer = try dupe(u8, "HTTP/1.1 200\r\n\r\n\r\n");
+    var response = try Response.parse(std.testing.allocator, buffer);
     defer response.deinit();
 
     expect(response.statusCode == .Ok);

@@ -1,9 +1,9 @@
 const Allocator = std.mem.Allocator;
-const Data = @import("../events.zig").Data;
-const Event = @import("../events.zig").Event;
+const Data = @import("../events/events.zig").Data;
+const Event = @import("../events/events.zig").Event;
 const Headers = @import("http").Headers;
 const Method = @import("http").Method;
-const Request = @import("../events.zig").Request;
+const Request = @import("../events/events.zig").Request;
 const State = @import("states.zig").State;
 const std = @import("std");
 const SMError = @import("errors.zig").SMError;
@@ -14,10 +14,10 @@ pub const ClientSM = struct {
     state: State,
 
     pub fn init(allocator: *Allocator) ClientSM {
-        return ClientSM { .allocator = allocator, .state = State.Idle};
+        return ClientSM{ .allocator = allocator, .state = State.Idle };
     }
 
-    pub fn reset(self: *ClientSM) void {
+    pub fn deinit(self: *ClientSM) void {
         self.state = State.Idle;
     }
 
@@ -26,7 +26,7 @@ pub const ClientSM = struct {
             .Idle => self.sendRequest(event),
             .SendBody => self.sendData(event),
             .Done, .Closed => self.closeConnection(event),
-            else => self.triggerLocalProtocolError()
+            else => self.triggerLocalProtocolError(),
         };
     }
 
@@ -37,7 +37,7 @@ pub const ClientSM = struct {
                 self.state = .SendBody;
                 break :then result;
             },
-            else => self.triggerLocalProtocolError()
+            else => self.triggerLocalProtocolError(),
         };
     }
 
@@ -68,7 +68,6 @@ pub const ClientSM = struct {
     }
 };
 
-
 const expect = std.testing.expect;
 const expectError = std.testing.expectError;
 
@@ -82,7 +81,7 @@ test "Send - Can send a Request event when state is Idle" {
 
     var requestEvent = try Request.init(Method.Get, "/", Version.Http11, headers);
 
-    var result = try client.send(Event {.Request = requestEvent});
+    var result = try client.send(Event{ .Request = requestEvent });
     defer std.testing.allocator.free(result);
 
     var expected = "GET / HTTP/1.1\r\nHost: www.ziglang.org\r\nGOTTA-GO: FAST!\r\n\r\n";
@@ -99,13 +98,12 @@ test "Send - Cannot send any other event when state is Idle" {
     expectError(error.LocalProtocolError, result);
 }
 
-
 test "Send - Can send a Data event when state is SendBody" {
     var client = ClientSM.init(std.testing.allocator);
     client.state = .SendBody;
-    var dataEvent = Data {.content = "It's raining outside, damned Brittany !"};
+    var data = Data.to_event(null, "It's raining outside, damned Brittany !");
 
-    var result = try client.send(Event {.Data = dataEvent});
+    var result = try client.send(data);
 
     expect(client.state == .SendBody);
     expect(std.mem.eql(u8, result, "It's raining outside, damned Brittany !"));
@@ -121,7 +119,6 @@ test "Send - Can send a EndOfMessage event when state is SendBody" {
     expect(std.mem.eql(u8, result, ""));
 }
 
-
 test "Send - Cannot send any other event when state is SendBody" {
     var client = ClientSM.init(std.testing.allocator);
     client.state = .SendBody;
@@ -131,7 +128,6 @@ test "Send - Cannot send any other event when state is SendBody" {
     expect(client.state == .Error);
     expectError(error.LocalProtocolError, result);
 }
-
 
 test "Send - Can send a ConnectionClosed event when state is Done" {
     var client = ClientSM.init(std.testing.allocator);

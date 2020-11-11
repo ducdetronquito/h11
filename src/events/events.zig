@@ -1,6 +1,6 @@
-pub const Data = @import("events/data.zig").Data;
-pub const Request = @import("events/request.zig").Request;
-pub const Response = @import("events/response.zig").Response;
+pub const Data = @import("data.zig").Data;
+pub const Request = @import("request.zig").Request;
+pub const Response = @import("response.zig").Response;
 
 pub const EventType = enum {
     ConnectionClosed,
@@ -18,37 +18,40 @@ pub const Event = union(EventType) {
     Response: Response,
 
     pub fn deinit(self: Event) void {
-        switch(self) {
+        switch (self) {
             .Response => |response| {
                 response.deinit();
+            },
+            .Data => |data| {
+                data.deinit();
             },
             else => {},
         }
     }
 
     pub fn isResponse(self: Event) bool {
-        return switch(self) {
+        return switch (self) {
             .Response => true,
             else => false,
         };
     }
 
     pub fn isData(self: Event) bool {
-        return switch(self) {
+        return switch (self) {
             .Data => true,
             else => false,
         };
     }
 
     pub fn isEndOfMessage(self: Event) bool {
-        return switch(self) {
+        return switch (self) {
             .EndOfMessage => true,
             else => false,
         };
     }
 
     pub fn isConnectionClosed(self: Event) bool {
-        return switch(self) {
+        return switch (self) {
             .ConnectionClosed => true,
             else => false,
         };

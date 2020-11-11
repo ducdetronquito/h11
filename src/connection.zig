@@ -1,20 +1,13 @@
 const Allocator = std.mem.Allocator;
-const BodyReader = @import("readers.zig").BodyReader;
-const Buffer = @import("buffer.zig").Buffer;
 const ClientSM = @import("state_machines/client.zig").ClientSM;
-const Event = @import("events.zig").Event;
-const Method = @import("http").Method;
-const Response = @import("events.zig").Response;
+const Event = @import("events/events.zig").Event;
 const ServerSM = @import("state_machines/server.zig").ServerSM;
 const SMError = @import("state_machines/errors.zig").SMError;
 const std = @import("std");
 
-
 pub const Client = struct {
-    buffer: Buffer,
     localState: ClientSM,
     remoteState: ServerSM,
-    sentRequestMethod: ?Method,
 
     const Error = SMError;
 
@@ -22,93 +15,36 @@ pub const Client = struct {
         var localState = ClientSM.init(allocator);
         var remoteState = ServerSM.init(allocator);
 
-        return Client {
-            .buffer = Buffer.init(allocator),
+        return Client{
             .localState = localState,
             .remoteState = remoteState,
-            .sentRequestMethod = null,
         };
     }
 
     pub fn deinit(self: *Client) void {
-        self.resetStates();
-        self.buffer.deinit();
-    }
-
-    // The caller owns the returned memory
-    pub fn toOwnedSlice(self: *Client) []const u8 {
-        self.resetStates();
-        return self.buffer.toOwnedSlice();
-    }
-
-    fn resetStates(self: *Client) void {
-        self.localState.reset();
-        self.remoteState.reset();
+        self.localState.deinit();
+        self.remoteState.deinit();
     }
 
     pub fn send(self: *Client, event: Event) Error![]const u8 {
         var bytes = try self.localState.send(event);
-        switch(event) {
-            .Request => |request| self.sentRequestMethod = request.method,
-            else => {}
-        }
+        self.remoteState.expectEvent(event);
         return bytes;
     }
 
-    pub fn receive(self: *Client, data: []const u8) !void{
-        try self.buffer.appendSlice(data);
+    pub fn receive(self: *Client, data: []const u8) !void {
+        try self.remoteState.receive(data);
     }
 
     pub fn nextEvent(self: *Client) Error!Event {
-        var event = try self.remoteState.nextEvent(&self.buffer);
-
-        switch (event) {
-            .Response => |response| {
-                errdefer response.deinit();
-                try self.frameResponseBody(response);
-            },
-            else => {},
-        }
-        return event;
-    }
-
-    // Cf: RFC 7230 - 3.3 Message Boddy
-    // https://tools.ietf.org/html/rfc7230#section-3.3
-    // https://tools.ietf.org/html/rfc7230#section-3.3.3
-    pub fn frameResponseBody(self: *Client, response: Response) Error!void {
-        var reader = try BodyReader.frame(self.sentRequestMethod.?, response);
-        self.remoteState.defineBodyReader(reader);
+        return self.remoteState.nextEvent();
     }
 };
-
 
 const expect = std.testing.expect;
 const expectError = std.testing.expectError;
 const Headers = @import("http").Headers;
-const Request = @import("events.zig").Request;
-
-test "Deinit" {
-    var client = Client.init(std.testing.allocator);
-    client.deinit();
-
-    expect(client.buffer.cursor == 0);
-    expect(client.buffer.data.items.len == 0);
-    expect(client.localState.state == .Idle);
-    expect(client.remoteState.state == .Idle);
-}
-
-test "ToOwnedSlice" {
-    var client = Client.init(std.testing.allocator);
-    try client.receive("Gotta go fast!");
-    var buffer = client.toOwnedSlice();
-    defer std.testing.allocator.free(buffer);
-
-    expect(client.buffer.cursor == 0);
-    expect(client.buffer.data.items.len == 0);
-    expect(client.localState.state == .Idle);
-    expect(client.remoteState.state == .Idle);
-    expect(std.mem.eql(u8, buffer, "Gotta go fast!"));
-}
+const Request = @import("events/events.zig").Request;
 
 test "Send - Client can send an event" {
     var client = Client.init(std.testing.allocator);
@@ -123,25 +59,11 @@ test "Send - Remember the request method when sending a request event" {
     var client = Client.init(std.testing.allocator);
     defer client.deinit();
 
-    var headers = Headers.init(std.testing.allocator);
-    defer headers.deinit();
-    _ = try headers.append("Host", "www.ziglang.org");
-
-    var request = try Request.init(.Get, "/", .Http11, headers);
-    var bytes = try client.send(Event {.Request = request });
+    var request = Request.default(std.testing.allocator);
+    var bytes = try client.send(Event{ .Request = request });
     std.testing.allocator.free(bytes);
 
-    expect(client.sentRequestMethod.? == .Get);
-}
-
-test "Receive" {
-    var client = Client.init(std.testing.allocator);
-    defer client.deinit();
-
-    var incoming_data = "Another one bytes the dust !";
-    try client.receive(incoming_data);
-
-    expect(std.mem.eql(u8, client.buffer.toSlice(), incoming_data));
+    expect(client.remoteState.expected_request.?.method == .Get);
 }
 
 test "NextEvent" {
@@ -152,46 +74,93 @@ test "NextEvent" {
     expectError(error.NeedData, event);
 }
 
-test "NextEvent - Fail to return a Response event when the content length is invalid." {
-    var client = Client.init(std.testing.allocator);
-    defer client.deinit();
-    client.sentRequestMethod = .Get;
-
-    try client.receive("HTTP/1.1 200 OK\r\nContent-Length: XXX\r\n\r\n");
-    var event = client.nextEvent();
-
-    expectError(error.RemoteProtocolError, event);
-}
-
 test "NextEvent - A Response event with no content length must be followed by an EndOfMessage event." {
     var client = Client.init(std.testing.allocator);
     defer client.deinit();
-    client.sentRequestMethod = .Get;
+
+    var request = Request.default(std.testing.allocator);
+    var bytes = try client.send(Event{ .Request = request });
+    std.testing.allocator.free(bytes);
 
     try client.receive("HTTP/1.1 200 OK\r\n\r\n");
+
     var event = try client.nextEvent();
     event.deinit();
 
-   event = try client.nextEvent();
-   expect(event == .EndOfMessage);
+    event = try client.nextEvent();
+    expect(event == .EndOfMessage);
 }
 
 test "NextEvent - A Response event with a content length muste be followed by a Data event and an EndOfMessage event." {
     var client = Client.init(std.testing.allocator);
     defer client.deinit();
-    client.sentRequestMethod = .Get;
+
+    var request = Request.default(std.testing.allocator);
+    var bytes = try client.send(Event{ .Request = request });
+    std.testing.allocator.free(bytes);
+
+    try client.receive("HTTP/1.1 200 OK\r\nContent-Length: 34\r\n\r\nAin't no sunshine when she's gone.");
+
+    var response_event = try client.nextEvent();
+    defer response_event.deinit();
+    expect(response_event.isResponse());
+
+    var data_event = try client.nextEvent();
+    defer data_event.deinit();
+    switch (data_event) {
+        .Data => |data| expect(std.mem.eql(u8, data.content, "Ain't no sunshine when she's gone.")),
+        else => unreachable,
+    }
+
+    var end_of_message_event = try client.nextEvent();
+    expect(end_of_message_event.isEndOfMessage());
+}
+
+test "Deinit - Response is not invalidated when the client is uninitialized." {
+    var client = Client.init(std.testing.allocator);
+
+    var request = Request.default(std.testing.allocator);
+    var bytes = try client.send(Event{ .Request = request });
+    std.testing.allocator.free(bytes);
+
     try client.receive("HTTP/1.1 200 OK\r\nContent-Length: 34\r\n\r\nAin't no sunshine when she's gone.");
 
     var event = try client.nextEvent();
-    expect(event.isResponse());
-    event.deinit();
+    var response = switch (event) {
+        .Response => |value| value,
+        else => unreachable,
+    };
+    defer response.deinit();
 
-    event = try client.nextEvent();
-    switch(event) {
-        .Data => |data| expect(std.mem.eql(u8, data.content,"Ain't no sunshine when she's gone.")),
-        else => unreachable
-    }
+    client.deinit();
 
-    event = try client.nextEvent();
-    expect(event.isEndOfMessage());
+    expect(response.statusCode == .Ok);
+    expect(response.version == .Http11);
+    expect(response.headers.len() == 1);
+    expect(std.mem.eql(u8, response.headers.items()[0].name.raw(), "Content-Length"));
+    expect(std.mem.eql(u8, response.headers.items()[0].value, "34"));
+}
+
+test "Deinit - Response body is not invalidated when the client is uninitialized." {
+    var client = Client.init(std.testing.allocator);
+
+    var request = Request.default(std.testing.allocator);
+    var bytes = try client.send(Event{ .Request = request });
+    std.testing.allocator.free(bytes);
+
+    try client.receive("HTTP/1.1 200 OK\r\nContent-Length: 34\r\n\r\nAin't no sunshine when she's gone.");
+
+    var response_event = try client.nextEvent();
+    response_event.deinit();
+
+    var event = try client.nextEvent();
+    var data = switch (event) {
+        .Data => |value| value,
+        else => unreachable,
+    };
+    defer data.deinit();
+
+    client.deinit();
+
+    expect(std.mem.eql(u8, data.content, "Ain't no sunshine when she's gone."));
 }
