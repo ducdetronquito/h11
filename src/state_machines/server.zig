@@ -39,10 +39,6 @@ pub const ServerSM = struct {
         self.state = State.Idle;
     }
 
-    pub fn getResponseBuffer(self: *ServerSM) []const u8 {
-        return self.response_buffer.toOwnedSlice();
-    }
-
     pub fn receive(self: *ServerSM, data: []const u8) !void {
         if (self.state != .Idle) {
             return try self.body_buffer.appendSlice(data);

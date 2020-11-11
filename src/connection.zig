@@ -27,10 +27,6 @@ pub const Client = struct {
         self.remoteState.deinit();
     }
 
-    pub fn getResponseBuffer(self: *Client) []const u8 {
-        return self.remoteState.getResponseBuffer();
-    }
-
     pub fn send(self: *Client, event: Event) Error![]const u8 {
         var bytes = try self.localState.send(event);
         switch(event) {
