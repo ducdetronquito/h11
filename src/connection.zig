@@ -1,6 +1,6 @@
 const Allocator = std.mem.Allocator;
 const ClientSM = @import("state_machines/client.zig").ClientSM;
-const Event = @import("events.zig").Event;
+const Event = @import("events/events.zig").Event;
 const ServerSM = @import("state_machines/server.zig").ServerSM;
 const SMError = @import("state_machines/errors.zig").SMError;
 const std = @import("std");
@@ -46,7 +46,7 @@ pub const Client = struct {
 const expect = std.testing.expect;
 const expectError = std.testing.expectError;
 const Headers = @import("http").Headers;
-const Request = @import("events.zig").Request;
+const Request = @import("events/events.zig").Request;
 
 
 test "Send - Client can send an event" {

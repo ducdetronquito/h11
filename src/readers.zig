@@ -1,10 +1,10 @@
 const Buffer = std.ArrayList(u8);
-const Data = @import("events.zig").Data;
-const Event = @import("events.zig").Event;
+const Data = @import("events/events.zig").Data;
+const Event = @import("events/events.zig").Event;
 const std = @import("std");
 const Headers = @import("http").Headers;
 const Method = @import("http").Method;
-const Response = @import("events.zig").Response;
+const Response = @import("events/events.zig").Response;
 const StatusCode = @import("http").StatusCode;
 
 pub const Error = error {

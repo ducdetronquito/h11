@@ -2,12 +2,11 @@ const Allocator = std.mem.Allocator;
 const Buffer = std.ArrayList(u8);
 const BodyReader = @import("../readers.zig").BodyReader;
 const ContentLengthReader = @import("../readers.zig").ContentLengthReader;
-const Data = @import("../events.zig").Data;
-const events = @import("../events.zig");
-const Event = events.Event;
+const Data = @import("../events/events.zig").Data;
+const Event = @import("../events/events.zig").Event;
 const Method = @import("http").Method;
-const Request = @import("../events.zig").Request;
-const Response = @import("../events.zig").Response;
+const Request = @import("../events/events.zig").Request;
+const Response = @import("../events/events.zig").Response;
 const SMError = @import("errors.zig").SMError;
 const State = @import("states.zig").State;
 const StatusCode = @import("http").StatusCode;
@@ -111,7 +110,7 @@ pub const ServerSM = struct {
             return error.NeedData;
         }
 
-        var response = events.Response.parse(self.allocator, data) catch {
+        var response = Response.parse(self.allocator, data) catch {
             return error.RemoteProtocolError;
         };
         errdefer response.headers.deinit();

@@ -1,6 +1,6 @@
-pub const Data = @import("events/data.zig").Data;
-pub const Request = @import("events/request.zig").Request;
-pub const Response = @import("events/response.zig").Response;
+pub const Data = @import("data.zig").Data;
+pub const Request = @import("request.zig").Request;
+pub const Response = @import("response.zig").Response;
 
 pub const EventType = enum {
     ConnectionClosed,
