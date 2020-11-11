@@ -35,6 +35,9 @@ pub const ContentLengthReader = struct {
             return .EndOfMessage;
         }
 
+        if (buffer.items.len < self.expectedLength) {
+            return error.NeedData;
+        }
         self.remaining_bytes = 0;
         return Data.to_event(buffer.allocator, buffer.toOwnedSlice());
     }
@@ -96,6 +99,7 @@ pub const BodyReader = union(BodyReaderType) {
 };
 
 const expect = std.testing.expect;
+const expectError = std.testing.expectError;
 
 test "Frame Body - A HEAD request has no content" {
     var headers = Headers.init(std.testing.allocator);
@@ -135,4 +139,31 @@ test "Frame Body - A successful response (2XX) to a CONNECT request has no conte
     var reader = try BodyReader.frame(.Connect, .Ok, headers);
 
     expect(reader == .NoContent);
+}
+
+test "ContentLengthReader - Read - Success" {
+    var buffer = Buffer.init(std.testing.allocator);
+    try buffer.appendSlice("Gotta go fast!");
+
+    var reader = ContentLengthReader.init(14);
+    var event = try reader.read(&buffer);
+    defer event.deinit();
+
+    switch(event) {
+        .Data => |data| {
+            expect(std.mem.eql(u8, data.content, "Gotta go fast!"));
+        },
+        else => unreachable,
+    }
+}
+
+test "ContentLengthReader - Read - NeedData" {
+    var buffer = Buffer.init(std.testing.allocator);
+    defer buffer.deinit();
+    try buffer.appendSlice("Gotta go");
+
+    var reader = ContentLengthReader.init(14);
+    var failure = reader.read(&buffer);
+
+    expectError(error.NeedData, failure);
 }
