@@ -1,4 +1,4 @@
-const Buffer = @import("buffer.zig").Buffer;
+const Buffer = std.ArrayList(u8);
 const Data = @import("events.zig").Data;
 const Event = @import("events.zig").Event;
 const std = @import("std");
@@ -26,7 +26,7 @@ pub const ContentLengthReader  = struct {
             return .EndOfMessage;
         }
 
-        if (buffer.len() > self.expectedLength) {
+        if (buffer.items.len > self.expectedLength) {
             return error.RemoteProtocolError;
         }
 
@@ -34,9 +34,8 @@ pub const ContentLengthReader  = struct {
             return .EndOfMessage;
         }
 
-        var content = buffer.read(self.expectedLength) catch return error.NeedData;
         self.remaining_bytes = 0;
-        return Event { .Data = Data {.allocator = buffer.data.allocator, .content = content } };
+        return Event { .Data = Data {.allocator = buffer.allocator, .content = buffer.toOwnedSlice() } };
     }
 };
 

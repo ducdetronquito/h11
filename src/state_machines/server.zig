@@ -1,6 +1,6 @@
 const Allocator = std.mem.Allocator;
+const Buffer = std.ArrayList(u8);
 const BodyReader = @import("../readers.zig").BodyReader;
-const Buffer = @import("../buffer.zig").Buffer;
 const ContentLengthReader = @import("../readers.zig").ContentLengthReader;
 const Data = @import("../events.zig").Data;
 const events = @import("../events.zig");
@@ -11,7 +11,9 @@ const SMError = @import("errors.zig").SMError;
 const State = @import("states.zig").State;
 const StatusCode = @import("http").StatusCode;
 const std = @import("std");
+const utils = @import("utils.zig");
 const Version = @import("http").Version;
+
 
 pub const ServerSM = struct {
     allocator: *Allocator,
@@ -44,7 +46,7 @@ pub const ServerSM = struct {
             return try self.body_buffer.appendSlice(data);
         }
 
-        var response = self.readUntilBlankLine(data);
+        var response = utils.readUntilBlankLine(data);
         if (response) |value|{
             try self.response_buffer.appendSlice(value);
             var body = data[value.len..];
@@ -52,27 +54,6 @@ pub const ServerSM = struct {
         } else {
             try self.response_buffer.appendSlice(data);
         }
-    }
-
-    fn readUntilBlankLine(self: ServerSM, data: []const u8) ?[]const u8 {
-        var i: usize = 0;
-        while(i < data.len) {
-            if (data[i] != '\r') {
-                i += 1;
-                continue;
-            }
-
-            if (data.len - i < 4) {
-                return null;
-            }
-
-            i += 4;
-            if (std.mem.eql(u8, data[i-3..i], "\n\r\n")) {
-                return data[0..i];
-            }
-        }
-
-        return null;
     }
 
     pub fn nextEvent(self: *ServerSM) SMError!Event {
@@ -110,18 +91,11 @@ pub const ServerSM = struct {
     }
 
     fn readData(self: *ServerSM) SMError!Event {
-        var event = try self.body_reader.read(&self.body_buffer);
-        switch(event) {
-            .Data => |*data| {
-                data.content = self.body_buffer.toOwnedSlice();
-            },
-            else => {},
-        }
-        return event;
+        return try self.body_reader.read(&self.body_buffer);
     }
 
     fn readResponse(self: *ServerSM) SMError!Event {
-        var data = self.response_buffer.toSlice();
+        var data = self.response_buffer.items;
         if (data.len < 4 or !std.mem.eql(u8, data[data.len-4..], "\r\n\r\n")) {
             return error.NeedData;
         }
@@ -131,9 +105,6 @@ pub const ServerSM = struct {
         };
         errdefer response.headers.deinit();
 
-        // Cf: RFC 7230 - 3.3 Message Boddy
-        // https://tools.ietf.org/html/rfc7230#section-3.3
-        // https://tools.ietf.org/html/rfc7230#section-3.3.3
         self.body_reader = try BodyReader.frame(self.sentRequestMethod.?, response.statusCode, response.headers);
 
         response.raw_bytes = self.response_buffer.toOwnedSlice();
