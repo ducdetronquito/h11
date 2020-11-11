@@ -17,8 +17,10 @@ pub const ContentLengthReader  = struct {
     expectedLength: usize,
     remaining_bytes: usize,
 
-    pub fn init(expectedLength: usize) ContentLengthReader {
-        return ContentLengthReader { .expectedLength = expectedLength, .remaining_bytes = expectedLength };
+    pub fn init(expectedLength: usize) BodyReader {
+        return BodyReader {
+            .ContentLength = ContentLengthReader { .expectedLength = expectedLength, .remaining_bytes = expectedLength }
+        };
     }
 
     pub fn read(self: *ContentLengthReader, buffer: *Buffer) Error!Event {
@@ -49,6 +51,10 @@ pub const BodyReaderType = enum {
 pub const BodyReader = union(BodyReaderType) {
     ContentLength: ContentLengthReader,
     NoContent: void,
+
+    pub fn default() BodyReader {
+        return BodyReader { .NoContent = undefined };
+    }
 
     pub fn expectedLength(self: BodyReader) usize {
         return switch(self) {
@@ -97,7 +103,7 @@ pub const BodyReader = union(BodyReaderType) {
             contentLength = std.fmt.parseInt(usize, contentLengthHeader.?.value, 10) catch return Error.RemoteProtocolError;
         }
 
-        return BodyReader { .ContentLength = ContentLengthReader.init(contentLength) };
+        return ContentLengthReader.init(contentLength);
     }
 };
 

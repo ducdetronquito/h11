@@ -27,7 +27,7 @@ pub const ServerSM = struct {
     pub fn init(allocator: *Allocator) ServerSM {
         return ServerSM {
             .allocator = allocator,
-            .body_reader = BodyReader { .ContentLength = ContentLengthReader.init(0) },
+            .body_reader = BodyReader.default(),
             .body_buffer = Buffer.init(allocator),
             .expected_request = null,
             .response_buffer = Buffer.init(allocator),
@@ -36,7 +36,7 @@ pub const ServerSM = struct {
     }
 
     pub fn deinit(self: *ServerSM) void {
-        self.body_reader = BodyReader { .ContentLength = ContentLengthReader.init(0) };
+        self.body_reader = BodyReader.default();
         self.body_buffer.deinit();
         self.expected_request = null;
         self.response_buffer.deinit();
@@ -209,7 +209,7 @@ test "NextEvent - Retrieve a Data event when state is SendBody." {
     var server = ServerSM.init(std.testing.allocator);
     defer server.deinit();
     server.state = .SendBody;
-    server.body_reader = BodyReader { .ContentLength = ContentLengthReader.init(34) };
+    server.body_reader = ContentLengthReader.init(34);
     try server.receive("Ain't no sunshine when she's gone.");
 
     var data_event = try server.nextEvent();
@@ -226,7 +226,7 @@ test "NextEvent - Retrieving an EndOfMessage event move the state to Done." {
     var server = ServerSM.init(std.testing.allocator);
     defer server.deinit();
     server.state = .SendBody;
-    server.body_reader = BodyReader { .ContentLength = ContentLengthReader.init(0) };
+    server.body_reader = BodyReader.default();
 
     var event = try server.nextEvent();
 
