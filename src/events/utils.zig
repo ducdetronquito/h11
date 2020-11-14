@@ -255,20 +255,20 @@ test "ParseHeaders - When parsing more headers than expected - Returns TooManyHe
     expectError(error.TooManyHeaders, fail);
 }
 
-test "ParseHeaders - Invalid character in the header's name - Returns Invalid" {
+test "ParseHeaders - Invalid character in the header's name - Returns InvalidHeaderName" {
     const content = "Cont(ent-Length: 10\r\n\r\n";
 
     const fail = parse_headers(std.testing.allocator, content, 1);
 
-    expectError(error.Invalid, fail);
+    expectError(error.InvalidHeaderName, fail);
 }
 
-test "ParseHeaders - Invalid character in the header's value - Returns Invalid" {
-    const content = "Content-Length: 1\r0\r\n";
+test "ParseHeaders - Invalid character in the header's value - Returns InvalidHeaderValue" {
+    const content = "My-Header: I\nvalid\r\n";
 
     const fail = parse_headers(std.testing.allocator, content, 1);
 
-    expectError(error.Invalid, fail);
+    expectError(error.InvalidHeaderValue, fail);
 }
 
 test "ReadLine - No CRLF - Returns null" {
