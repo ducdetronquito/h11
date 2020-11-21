@@ -6,7 +6,6 @@ I/O free state machine implementation of the HTTP/1.1 protocol.
 
 Inspired by the amazing work of [python-hyper](https://github.com/python-hyper/h11).
 
-
 ## Usage
 
 First steps of a proper documentation will land before the end of the year: stay tuned 🎵
@@ -14,6 +13,10 @@ First steps of a proper documentation will land before the end of the year: stay
 ## Requirements
 
 To work with *h11* you will need the latest stable version of Zig, which is currently Zig 0.7.0.
+
+## Dependencies
+
+- [http](https://github.com/ducdetronquito/http)
 
 ## License
 
