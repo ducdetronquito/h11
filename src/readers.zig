@@ -31,6 +31,10 @@ pub const ContentLengthReader = struct {
             return error.RemoteProtocolError;
         }
 
+        if (buffer.items.len == 0) {
+            return error.NeedData;
+        }
+
         var data = buffer.toOwnedSlice();
         self.remaining_bytes -= data.len;
         return Data.to_event(buffer.allocator, data);
@@ -133,6 +137,15 @@ test "Frame Body - A successful response (2XX) to a CONNECT request has no conte
     var reader = try BodyReader.frame(.Connect, .Ok, headers);
 
     expect(reader == .NoContent);
+}
+
+test "ContentLengthReader - Requires more data if a body is expected but the buffer is empty" {
+    var buffer = Buffer.init(std.testing.allocator);
+
+    var reader = ContentLengthReader.init(14);
+    const failure = reader.read(&buffer);
+
+    expectError(error.NeedData, failure);
 }
 
 test "ContentLengthReader - Read" {
