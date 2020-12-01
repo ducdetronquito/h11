@@ -27,19 +27,13 @@ pub const ContentLengthReader = struct {
             return .EndOfMessage;
         }
 
-        if (buffer.items.len > self.expectedLength) {
+        if (buffer.items.len > self.remaining_bytes) {
             return error.RemoteProtocolError;
         }
 
-        if (self.expectedLength == 0) {
-            return .EndOfMessage;
-        }
-
-        if (buffer.items.len < self.expectedLength) {
-            return error.NeedData;
-        }
-        self.remaining_bytes = 0;
-        return Data.to_event(buffer.allocator, buffer.toOwnedSlice());
+        var data = buffer.toOwnedSlice();
+        self.remaining_bytes -= data.len;
+        return Data.to_event(buffer.allocator, data);
     }
 };
 
@@ -141,29 +135,51 @@ test "Frame Body - A successful response (2XX) to a CONNECT request has no conte
     expect(reader == .NoContent);
 }
 
-test "ContentLengthReader - Read - Success" {
+test "ContentLengthReader - Read" {
     var buffer = Buffer.init(std.testing.allocator);
     try buffer.appendSlice("Gotta go fast!");
 
     var reader = ContentLengthReader.init(14);
     var event = try reader.read(&buffer);
-    defer event.deinit();
 
     switch(event) {
         .Data => |data| {
             expect(std.mem.eql(u8, data.content, "Gotta go fast!"));
+            event.deinit();
         },
         else => unreachable,
     }
+
+    event = try reader.read(&buffer);
+    expect(event == .EndOfMessage);
 }
 
-test "ContentLengthReader - Read - NeedData" {
+test "ContentLengthReader - Read multiple chunk" {
     var buffer = Buffer.init(std.testing.allocator);
     defer buffer.deinit();
     try buffer.appendSlice("Gotta go");
 
     var reader = ContentLengthReader.init(14);
-    var failure = reader.read(&buffer);
+    var event = try reader.read(&buffer);
+    switch(event) {
+        .Data => |data| {
+            expect(std.mem.eql(u8, data.content, "Gotta go"));
+            event.deinit();
+        },
+        else => unreachable,
+    }
 
-    expectError(error.NeedData, failure);
+    try buffer.appendSlice(" fast!");
+
+    event = try reader.read(&buffer);
+    switch(event) {
+        .Data => |data| {
+            expect(std.mem.eql(u8, data.content, " fast!"));
+            event.deinit();
+        },
+        else => unreachable,
+    }
+
+    event = try reader.read(&buffer);
+    expect(event == .EndOfMessage);
 }
