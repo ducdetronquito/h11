@@ -3,6 +3,7 @@ const Headers = @import("http").Headers;
 const ParsingError = @import("errors.zig").ParsingError;
 const std = @import("std");
 
+
 pub fn parse_headers(allocator: *Allocator, buffer: []const u8, max_headers: usize) ParsingError!Headers {
     var cursor: usize = 0;
     var headers = Headers.init(allocator);
@@ -36,7 +37,7 @@ pub fn parse_headers(allocator: *Allocator, buffer: []const u8, max_headers: usi
         // Cf: https://tools.ietf.org/html/rfc7230#section-3.2
         remaining_bytes = buffer[cursor..];
         for (remaining_bytes) |char, i| {
-            if (is_linear_whitespace(char)) {
+            if (std.ascii.isBlank(char)) {
                 cursor += 1;
             }
             break;
@@ -69,9 +70,6 @@ pub fn parse_headers(allocator: *Allocator, buffer: []const u8, max_headers: usi
     return headers;
 }
 
-inline fn is_linear_whitespace(char: u8) bool {
-    return char == ' ' or char == '\t';
-}
 
 // Read a buffer until a CRLF (\r\n) is found.
 // NB: The CRLF is not returned.
@@ -144,106 +142,6 @@ pub fn readUri(buffer: []const u8) ParsingError![]const u8 {
 const expect = std.testing.expect;
 const expectError = std.testing.expectError;
 
-test "ParseHeaders - Single header - Success" {
-    const content = "Content-Length: 10\r\n\r\n";
-
-    var headers = try parse_headers(std.testing.allocator, content, 1);
-    defer headers.deinit();
-
-    const header = headers.items()[0];
-    expect(std.mem.eql(u8, header.name.raw(), "Content-Length"));
-    expect(std.mem.eql(u8, header.value, "10"));
-}
-
-test "ParseHeaders - Multiple headers - Success" {
-    const content = "Content-Length: 10\r\nServer: Apache\r\n\r\n";
-
-    var headers = try parse_headers(std.testing.allocator, content, 2);
-    defer headers.deinit();
-
-    const content_length = headers.items()[0];
-    expect(std.mem.eql(u8, content_length.name.raw(), "Content-Length"));
-    expect(std.mem.eql(u8, content_length.value, "10"));
-
-    const server = headers.items()[1];
-    expect(std.mem.eql(u8, server.name.raw(), "Server"));
-    expect(std.mem.eql(u8, server.value, "Apache"));
-}
-
-test "ParseHeaders - Ignore a missing whitespace between the semicolon and the header value - Success" {
-    const content = "Content-Length:10\r\n\r\n";
-
-    var headers = try parse_headers(std.testing.allocator, content, 1);
-    defer headers.deinit();
-
-    const header = headers.items()[0];
-    expect(std.mem.eql(u8, header.name.raw(), "Content-Length"));
-    expect(std.mem.eql(u8, header.value, "10"));
-}
-
-test "ParseHeaders - When the last CRLF after the headers is missing - Returns Incomplete" {
-    const content = "Content-Length: 10\r\n";
-
-    const fail = parse_headers(std.testing.allocator, content, 1);
-
-    expectError(error.Incomplete, fail);
-}
-
-test "ParseHeaders - When a header's name does not end with a semicolon - Returns Incomplete" {
-    const content = "Content-Length";
-
-    const fail = parse_headers(std.testing.allocator, content, 1);
-
-    expectError(error.Incomplete, fail);
-}
-
-test "ParseHeaders - When a header's value does not exist - Returns Incomplete" {
-    const content = "Content-Length:";
-
-    const fail = parse_headers(std.testing.allocator, content, 1);
-
-    expectError(error.Incomplete, fail);
-}
-
-test "ParseHeaders - When a header's value does not exist (but the whitespace after the semicolon is here) - Returns Incomplete" {
-    const content = "Content-Length: ";
-
-    const fail = parse_headers(std.testing.allocator, content, 1);
-
-    expectError(error.Incomplete, fail);
-}
-
-test "ParseHeaders - When LF is mising after a header's value - Returns Incomplete" {
-    const content = "Content-Length: 10\r";
-
-    const fail = parse_headers(std.testing.allocator, content, 1);
-
-    expectError(error.Incomplete, fail);
-}
-
-test "ParseHeaders - When parsing more headers than expected - Returns TooManyHeaders" {
-    const content = "Content-Length: 10\r\nServer: Apache\r\n\r\n";
-
-    const fail = parse_headers(std.testing.allocator, content, 1);
-
-    expectError(error.TooManyHeaders, fail);
-}
-
-test "ParseHeaders - Invalid character in the header's name - Returns InvalidHeaderName" {
-    const content = "Cont(ent-Length: 10\r\n\r\n";
-
-    const fail = parse_headers(std.testing.allocator, content, 1);
-
-    expectError(error.InvalidHeaderName, fail);
-}
-
-test "ParseHeaders - Invalid character in the header's value - Returns InvalidHeaderValue" {
-    const content = "My-Header: I\nvalid\r\n";
-
-    const fail = parse_headers(std.testing.allocator, content, 1);
-
-    expectError(error.InvalidHeaderValue, fail);
-}
 
 test "ReadLine - No CRLF - Returns null" {
     const content = "Hello World!";

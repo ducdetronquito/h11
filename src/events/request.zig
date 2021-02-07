@@ -4,7 +4,6 @@ const Method = @import("http").Method;
 const parse_headers = @import("utils.zig").parse_headers;
 const ParsingError = @import("errors.zig").ParsingError;
 const readLine = @import("utils.zig").readLine;
-const readToken = @import("utils.zig").readToken;
 const readUri = @import("utils.zig").readUri;
 const std = @import("std");
 const Version = @import("http").Version;

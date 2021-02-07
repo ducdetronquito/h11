@@ -65,6 +65,38 @@ pub const ServerSM = struct {
         }
     }
 
+    pub fn readFromStream(self: *ServerSM, reader: anytype, buffer: []u8) !Event {
+        return switch (self.state) {
+            .Idle => {
+                var event = self.readResponseFromStream(reader, buffer) catch |err| {
+                    self.state = .Error;
+                    return err;
+                };
+                self.state = .SendBody;
+                return event;
+            },
+            .SendBody => {
+                // var event = try self.readDataFromReader(reader, buffer);
+                // if (event == .EndOfMessage) {
+                //     self.state = .Done;
+                // }
+                // return event;
+                return .EndOfMessage;
+            },
+            .Done => {
+                self.state = .Closed;
+                return .ConnectionClosed;
+            },
+            .Closed => {
+                return .ConnectionClosed;
+            },
+            else => {
+                self.state = .Error;
+                return error.RemoteProtocolError;
+            },
+        };
+    }
+
     pub fn nextEvent(self: *ServerSM) SMError!Event {
         return switch (self.state) {
             .Idle => {
@@ -98,6 +130,19 @@ pub const ServerSM = struct {
             },
         };
     }
+
+    fn readResponseFromStream(self: *ServerSM, reader: anytype, buffer: []u8) !Event {
+        var response = try Response.parseFromStream(self.allocator, reader, buffer);
+        errdefer response.headers.deinit();
+
+        self.body_reader = try BodyReader.frame(self.expected_request.?.method, response.statusCode, response.headers);
+
+        return Event{ .Response = response };
+    }
+
+    // fn readDataFromStream(self: *ServerSM, reader: anytype, buffer: []u8) !Event {
+    //     return self.body_reader.readFromStream(reader, buffer);
+    // }
 
     fn readData(self: *ServerSM) SMError!Event {
         return try self.body_reader.read(&self.body_buffer);
@@ -265,4 +310,29 @@ test "NextEvent - Fail to return a Response event when the content length is inv
     var event = server.nextEvent();
 
     expectError(error.RemoteProtocolError, event);
+}
+
+test "ReadFromStream - Can retrieve a Response event when state is Idle" {
+    var server = ServerSM.init(std.testing.allocator);
+    defer server.deinit();
+
+    var request = Request.default(std.testing.allocator);
+    defer request.deinit();
+    server.expectEvent(Event{ .Request = request });
+
+    var read_buffer: [100]u8 = undefined;
+    var content = "HTTP/1.1 200 OK\r\nServer: Apache\r\nContent-Length: 0\r\n\r\n";
+    var reader = std.io.fixedBufferStream(content).reader();
+
+    var event = try server.readFromStream(reader, &read_buffer);
+
+    switch (event) {
+        .Response => |*response| {
+            expect(response.statusCode == .Ok);
+            expect(response.version == .Http11);
+            response.headers.deinit();
+        },
+        else => unreachable,
+    }
+    expect(server.state == .SendBody);
 }

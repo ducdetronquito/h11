@@ -39,6 +39,10 @@ pub const Client = struct {
     pub fn nextEvent(self: *Client) Error!Event {
         return self.remoteState.nextEvent();
     }
+
+    pub fn read(self: *Client, reader: anytype, buffer: []u8) !Event {
+        return self.remoteState.readFromStream(reader, buffer);
+    }
 };
 
 const expect = std.testing.expect;
@@ -163,4 +167,33 @@ test "Deinit - Response body is not invalidated when the client is uninitialized
     client.deinit();
 
     expect(std.mem.eql(u8, data.content, "Ain't no sunshine when she's gone."));
+}
+
+
+test "Read - A Response event with no content length must be followed by an EndOfMessage event." {
+    var client = Client.init(std.testing.allocator);
+    defer client.deinit();
+
+    var request = Request.default(std.testing.allocator);
+    var bytes = try client.send(Event{ .Request = request });
+    std.testing.allocator.free(bytes);
+
+    try client.receive("HTTP/1.1 200 OK\r\n\r\n");
+
+    var read_buffer: [100]u8 = undefined;
+    var content = "HTTP/1.1 200 OK\r\n\r\n";
+    var reader = std.io.fixedBufferStream(content).reader();
+
+    var event = try client.read(reader, &read_buffer);
+    switch (event) {
+        .Response => |*response| {
+            response.headers.deinit();
+        },
+        else => {
+            std.debug.panic("Not a response event.", .{});
+        }
+    }
+
+    event = try client.nextEvent();
+    expect(event == .EndOfMessage);
 }
