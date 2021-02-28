@@ -1,8 +1,7 @@
 const Allocator = std.mem.Allocator;
 const Headers = @import("http").Headers;
-const parse_headers = @import("utils.zig").parse_headers;
+const parseHeaders = @import("headers.zig").parse;
 const ParsingError = @import("errors.zig").ParsingError;
-const readLine = @import("utils.zig").readLine;
 const StatusCode = @import("http").StatusCode;
 const std = @import("std");
 const Version = @import("http").Version;
@@ -44,7 +43,7 @@ pub const Response = struct {
             return error.Invalid;
         }
 
-        var _headers = try parse_headers(allocator, buffer[status_line.len + 2 ..], 128);
+        var _headers = try parseHeaders(allocator, buffer[status_line.len + 2 ..], 128);
         return Response{
             .allocator = allocator,
             .headers = _headers,
