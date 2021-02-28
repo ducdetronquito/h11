@@ -21,33 +21,6 @@ pub fn readLine(buffer: []const u8) ?[]const u8 {
     }
 }
 
-// Determines if a character is a token character.
-//
-// Cf: https://tools.ietf.org/html/rfc7230#section-3.2.6
-// > token          = 1*tchar
-// >
-// > tchar          = "!" / "#" / "$" / "%" / "&" / "'" / "*"
-// >                / "+" / "-" / "." / "^" / "_" / "`" / "|" / "~"
-// >                / DIGIT / ALPHA
-// >                ; any VCHAR, except delimiters
-fn is_token(char: u8) bool {
-    return char > 0x1f and char < 0x7f;
-}
-
-// Returns a token
-// Cf: https://tools.ietf.org/html/rfc7230#section-3.2.6
-pub fn readToken(buffer: []const u8) ParsingError![]const u8 {
-    for (buffer) |char, i| {
-        if (char == ' ') {
-            return buffer[0..i];
-        }
-        if (!is_token(char)) {
-            return error.Invalid;
-        }
-    }
-    return error.Invalid;
-}
-
 // ASCII codes accepted for an URI
 // Cf: Borrowed from Seamonstar's httparse library.
 // https://github.com/seanmonstar/httparse/blob/01e68542605d8a24a707536561c27a336d4090dc/src/lib.rs#L63

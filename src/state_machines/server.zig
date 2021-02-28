@@ -306,7 +306,7 @@ test "NextEvent - Retrieve a ConnectionClosed event when state is Done" {
     var reader = std.io.fixedBufferStream("").reader();
     var event = try server.nextEvent(reader, .{});
 
-    expect(event.isConnectionClosed());
+    expect(event == .ConnectionClosed);
     expect(server.state == .Closed);
 }
 
@@ -318,7 +318,7 @@ test "NextEvent - Retrieve a ConnectionClosed event when state is Closed" {
     var reader = std.io.fixedBufferStream("").reader();
     var event = try server.nextEvent(reader, .{});
 
-    expect(event.isConnectionClosed());
+    expect(event == .ConnectionClosed);
     expect(server.state == .Closed);
 }
 

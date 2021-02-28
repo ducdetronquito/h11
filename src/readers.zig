@@ -1,4 +1,3 @@
-const Buffer = std.ArrayList(u8);
 const Data = @import("events/events.zig").Data;
 const Event = @import("events/events.zig").Event;
 const std = @import("std");
