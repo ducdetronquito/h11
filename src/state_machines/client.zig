@@ -43,7 +43,7 @@ pub const ClientSM = struct {
 
     fn sendData(self: *ClientSM, event: Event) SMError![]const u8 {
         return switch (event) {
-            .Data => |data| data.content,
+            .Data => |data| data.bytes,
             .EndOfMessage => then: {
                 self.state = .Done;
                 break :then "";
@@ -101,7 +101,7 @@ test "Send - Cannot send any other event when state is Idle" {
 test "Send - Can send a Data event when state is SendBody" {
     var client = ClientSM.init(std.testing.allocator);
     client.state = .SendBody;
-    var data = Data.to_event(null, "It's raining outside, damned Brittany !");
+    var data = Event { .Data = Data { .bytes = "It's raining outside, damned Brittany !" } };
 
     var result = try client.send(data);
 

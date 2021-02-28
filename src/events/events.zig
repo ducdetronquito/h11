@@ -22,9 +22,6 @@ pub const Event = union(EventType) {
             .Response => |response| {
                 response.deinit();
             },
-            .Data => |data| {
-                data.deinit();
-            },
             else => {},
         }
     }
