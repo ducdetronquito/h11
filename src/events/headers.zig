@@ -4,14 +4,13 @@ const ParsingError = @import("errors.zig").ParsingError;
 const std = @import("std");
 
 pub fn parse(allocator: *Allocator, buffer: []const u8, max_headers: usize) ParsingError!Headers {
-    var cursor: usize = 0;
+    var remaining_bytes = buffer[0..];
     var headers = Headers.init(allocator);
     errdefer headers.deinit();
 
     while (true) {
-        var remaining_bytes = buffer[cursor..];
         if (remaining_bytes.len < 2) {
-            return error.Incomplete;
+            return error.Invalid;
         }
 
         if (remaining_bytes[0] == '\r' and remaining_bytes[1] == '\n') {
@@ -22,48 +21,18 @@ pub fn parse(allocator: *Allocator, buffer: []const u8, max_headers: usize) Pars
             return error.TooManyHeaders;
         }
 
-        const header_name = for (remaining_bytes) |char, i| {
-            if (char == ':') {
-                const name = remaining_bytes[0..i];
-                cursor += i + 1;
-                break name;
-            }
-        } else {
-            return error.Incomplete;
-        };
+        var name_end = std.mem.indexOfScalar(u8, remaining_bytes, ':') orelse return error.Invalid;
+        var name = remaining_bytes[0..name_end];
+        remaining_bytes = remaining_bytes[name_end + 1 ..];
 
-        // Consume the optional whitespace between the semicolon and the header value
-        // Cf: https://tools.ietf.org/html/rfc7230#section-3.2
-        remaining_bytes = buffer[cursor..];
-        for (remaining_bytes) |char, i| {
-            if (std.ascii.isBlank(char)) {
-                cursor += 1;
-            }
-            break;
-        } else {
-            return error.Incomplete;
+        var value_end = std.mem.indexOf(u8, remaining_bytes, "\r\n") orelse return error.Invalid;
+        var value = remaining_bytes[0..value_end];
+        if (std.ascii.isBlank(value[0])) {
+            value = value[1..];
         }
 
-        remaining_bytes = buffer[cursor..];
-        const header_value = for (remaining_bytes) |char, i| {
-            if (char == '\r') {
-                cursor += i;
-                break remaining_bytes[0..i];
-            }
-        } else {
-            return error.Incomplete;
-        };
-
-        remaining_bytes = buffer[cursor..];
-        if (remaining_bytes.len < 2) {
-            return error.Incomplete;
-        }
-        if (remaining_bytes[0] == '\r' and remaining_bytes[1] == '\n') {
-            try headers.append(header_name, header_value);
-            cursor += 2;
-        } else {
-            return error.Invalid;
-        }
+        try headers.append(name, value);
+        remaining_bytes = remaining_bytes[value_end + 2 ..];
     }
 
     return headers;
@@ -81,6 +50,15 @@ test "Parse - Single header - Success" {
     const header = headers.items()[0];
     expect(std.mem.eql(u8, header.name.raw(), "Content-Length"));
     expect(std.mem.eql(u8, header.value, "10"));
+}
+
+test "Parse - No header - Success" {
+    const content = "\r\n";
+
+    var headers = try parse(std.testing.allocator, content, 1);
+    defer headers.deinit();
+
+    expect(headers.len() == 0);
 }
 
 test "Parse - Multiple headers - Success" {
@@ -109,44 +87,28 @@ test "Parse - Ignore a missing whitespace between the semicolon and the header v
     expect(std.mem.eql(u8, header.value, "10"));
 }
 
-test "Parse - When the last CRLF after the headers is missing - Returns Incomplete" {
+test "Parse - When the last CRLF after the headers is missing - Returns Invalid" {
     const content = "Content-Length: 10\r\n";
 
     const fail = parse(std.testing.allocator, content, 1);
 
-    expectError(error.Incomplete, fail);
+    expectError(error.Invalid, fail);
 }
 
-test "Parse - When a header's name does not end with a semicolon - Returns Incomplete" {
+test "Parse - When a header's name does not end with a semicolon - Returns Invalid" {
     const content = "Content-Length";
 
     const fail = parse(std.testing.allocator, content, 1);
 
-    expectError(error.Incomplete, fail);
+    expectError(error.Invalid, fail);
 }
 
-test "Parse - When a header's value does not exist - Returns Incomplete" {
+test "Parse - When a header's value does not exist - Returns Invalid" {
     const content = "Content-Length:";
 
     const fail = parse(std.testing.allocator, content, 1);
 
-    expectError(error.Incomplete, fail);
-}
-
-test "Parse - When a header's value does not exist (but the whitespace after the semicolon is here) - Returns Incomplete" {
-    const content = "Content-Length: ";
-
-    const fail = parse(std.testing.allocator, content, 1);
-
-    expectError(error.Incomplete, fail);
-}
-
-test "Parse - When LF is mising after a header's value - Returns Incomplete" {
-    const content = "Content-Length: 10\r";
-
-    const fail = parse(std.testing.allocator, content, 1);
-
-    expectError(error.Incomplete, fail);
+    expectError(error.Invalid, fail);
 }
 
 test "Parse - When parsing more headers than expected - Returns TooManyHeaders" {
