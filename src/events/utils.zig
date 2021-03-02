@@ -1,25 +1,4 @@
 const ParsingError = @import("errors.zig").ParsingError;
-const std = @import("std");
-
-// Read a buffer until a CRLF (\r\n) is found.
-// NB: The CRLF is not returned.
-pub fn readLine(buffer: []const u8) ?[]const u8 {
-    var cursor = for (buffer) |char, i| {
-        if (char == '\r') {
-            break i;
-        }
-    } else {
-        return null;
-    };
-
-    for (buffer[cursor..]) |char, i| {
-        if (char == '\n') {
-            return buffer[0 .. cursor + i - 1];
-        }
-    } else {
-        return null;
-    }
-}
 
 // ASCII codes accepted for an URI
 // Cf: Borrowed from Seamonstar's httparse library.
@@ -66,31 +45,4 @@ pub fn readUri(buffer: []const u8) ParsingError![]const u8 {
         }
     }
     return error.Invalid;
-}
-
-const expect = std.testing.expect;
-const expectError = std.testing.expectError;
-
-test "ReadLine - No CRLF - Returns null" {
-    const content = "Hello World!";
-
-    const line = readLine(content);
-
-    expect(line == null);
-}
-
-test "ReadLine - Success" {
-    const content = "Hello\r\nWorld!";
-
-    const line = readLine(content);
-
-    expect(std.mem.eql(u8, line.?, "Hello"));
-}
-
-test "ReadLine - Carriage-return only returns null" {
-    const content = "\r";
-
-    const line = readLine(content);
-
-    expect(line == null);
 }

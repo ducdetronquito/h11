@@ -3,7 +3,6 @@ const Headers = @import("http").Headers;
 const parseHeaders = @import("headers.zig").parse;
 const Method = @import("http").Method;
 const ParsingError = @import("errors.zig").ParsingError;
-const readLine = @import("utils.zig").readLine;
 const readUri = @import("utils.zig").readUri;
 const std = @import("std");
 const Version = @import("http").Version;
@@ -56,7 +55,8 @@ pub const Request = struct {
     }
 
     pub fn parse(allocator: *Allocator, buffer: []const u8) ParsingError!Request {
-        var requestLine = readLine(buffer) orelse return error.Incomplete;
+        var line_end = std.mem.indexOfPosLinear(u8, buffer, 0, "\r\n") orelse return error.Incomplete;
+        var requestLine = buffer[0..line_end];
         var cursor: usize = 0;
 
         var method = for (requestLine) |char, i| {
