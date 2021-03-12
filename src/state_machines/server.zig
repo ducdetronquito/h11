@@ -149,8 +149,9 @@ pub const ServerSM = struct {
         }
         if (self.body_buffer_length > 0) {
             var fixed_stream = std.io.fixedBufferStream(self.body_buffer[0..self.body_buffer_length]);
-            // TODO: Deal when the options.buffer cannot read all data in self.body_buffer at once.
-            return try self.body_reader.read(fixed_stream.reader(), options.buffer);
+            var event = try self.body_reader.read(fixed_stream.reader(), options.buffer);
+            self.body_buffer_length -= event.Data.bytes.len;
+            return event;
         }
         return try self.body_reader.read(reader, options.buffer);
     }
