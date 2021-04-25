@@ -1,7 +1,6 @@
 const Allocator = std.mem.Allocator;
 const Buffer = std.ArrayList(u8);
-const BodyReader = @import("../readers.zig").BodyReader;
-const ContentLengthReader = @import("../readers.zig").ContentLengthReader;
+const BodyReader = @import("../readers/readers.zig").BodyReader;
 const Data = @import("../events/events.zig").Data;
 const Event = @import("../events/events.zig").Event;
 const Method = @import("http").Method;
@@ -321,19 +320,4 @@ test "NextEvent - Retrieve a ConnectionClosed event when state is Closed" {
 
     expect(event == .ConnectionClosed);
     expect(server.state == .Closed);
-}
-
-test "NextEvent - Fail to return a Response event when the content length is invalid." {
-    var server = ServerSM.init(std.testing.allocator);
-    defer server.deinit();
-
-    var request = Request.default(std.testing.allocator);
-    defer request.deinit();
-    server.expectEvent(Event{ .Request = request });
-
-    var content = "HTTP/1.1 200 OK\r\nContent-Length: XXX\r\n\r\n";
-    var reader = std.io.fixedBufferStream(content).reader();
-    var failure = server.nextEvent(reader, .{});
-
-    expectError(error.RemoteProtocolError, failure);
 }

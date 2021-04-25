@@ -1,50 +1,19 @@
-const Data = @import("events/events.zig").Data;
-const Event = @import("events/events.zig").Event;
-const std = @import("std");
+const ChunkedReader = @import("chunked_reader.zig").ChunkedReader;
+const ContentLengthReader = @import("content_length_reader.zig").ContentLengthReader;
+const Event = @import("../events/events.zig").Event;
 const Headers = @import("http").Headers;
 const Method = @import("http").Method;
-const Response = @import("events/events.zig").Response;
 const StatusCode = @import("http").StatusCode;
-
-pub const Error = error{
-    BodyTooshort,
-    BodyTooLarge,
-};
-
-pub const ContentLengthReader = struct {
-    expected_length: usize,
-    read_bytes: usize,
-
-    pub fn init(expected_length: usize) BodyReader {
-        return BodyReader {
-            .ContentLength = ContentLengthReader{ .expected_length = expected_length, .read_bytes = 0 },
-        };
-    }
-
-    pub fn read(self: *ContentLengthReader, reader: anytype, buffer: []u8) !Event {
-        if (self.read_bytes == self.expected_length) {
-            return .EndOfMessage;
-        }
-
-        var count = try reader.read(buffer);
-        if (count == 0) {
-            return Error.BodyTooshort;
-        }
-
-        self.read_bytes += count;
-        if (self.read_bytes > self.expected_length) {
-            return Error.BodyTooLarge;
-        }
-        return Event{ .Data = Data{ .bytes = buffer[0..count] } };
-    }
-};
+const std = @import("std");
 
 pub const BodyReaderType = enum {
+    Chunked,
     ContentLength,
     NoContent,
 };
 
 pub const BodyReader = union(BodyReaderType) {
+    Chunked: ChunkedReader(8192),
     ContentLength: ContentLengthReader,
     NoContent: void,
 
@@ -54,6 +23,7 @@ pub const BodyReader = union(BodyReaderType) {
 
     pub fn read(self: *BodyReader, reader: anytype, buffer: []u8) !Event {
         return switch (self.*) {
+            .Chunked => |*chunked_reader| try chunked_reader.read(reader, buffer),
             .ContentLength => |*body_reader| try body_reader.read(reader, buffer),
             .NoContent => .EndOfMessage,
         };
@@ -62,7 +32,9 @@ pub const BodyReader = union(BodyReaderType) {
     // Determines the appropriate response body length.
     // Cf: RFC 7230 section 3.3.3, https://tools.ietf.org/html/rfc7230#section-3.3.3
     // TODO:
-    // - Handle transfert encoding (chunked, compress, deflate, gzip)
+    // - Handle transfert encoding (compress, deflate, gzip)
+    // - Should we deal with chunked not being the final encoding ?
+    //   Currently it is considered to be an error (UnknownTranfertEncoding).
     pub fn frame(requestMethod: Method, status_code: StatusCode, headers: Headers) !BodyReader {
         var rawStatusCode = @enumToInt(status_code);
         const hasNoContent = (requestMethod == .Head or rawStatusCode < 200 or status_code == .NoContent or status_code == .NotModified);
@@ -76,6 +48,14 @@ pub const BodyReader = union(BodyReaderType) {
             return .NoContent;
         }
 
+        var transfert_encoding = headers.get("Transfer-Encoding");
+        if (transfert_encoding != null) {
+            if (!std.mem.endsWith(u8, transfert_encoding.?.value, "chunked")) {
+                return error.UnknownTranfertEncoding;
+            }
+            return BodyReader{.Chunked = ChunkedReader(8192){} };
+        }
+
         var contentLength: usize = 0;
         var contentLengthHeader = headers.get("Content-Length");
 
@@ -83,7 +63,7 @@ pub const BodyReader = union(BodyReaderType) {
             contentLength = std.fmt.parseInt(usize, contentLengthHeader.?.value, 10) catch return error.RemoteProtocolError;
         }
 
-        return ContentLengthReader.init(contentLength);
+        return BodyReader{.ContentLength = ContentLengthReader{.expected_length = contentLength}};
     }
 };
 
@@ -130,6 +110,56 @@ test "Frame Body - A successful response (2XX) to a CONNECT request has no conte
     expect(body_reader == .NoContent);
 }
 
+test "Frame Body - Use a ChunkReader when chunked is the final encoding" {
+    var headers = Headers.init(std.testing.allocator);
+    defer headers.deinit();
+    try headers.append("Transfer-Encoding", "gzip, chunked");
+
+    var body_reader = try BodyReader.frame(.Get, .Ok, headers);
+
+    expect(body_reader == .Chunked);
+}
+
+test "Frame Body - Fail when chunked is not the final encoding" {
+    var headers = Headers.init(std.testing.allocator);
+    defer headers.deinit();
+    try headers.append("Transfer-Encoding", "chunked, gzip");
+
+    const failure = BodyReader.frame(.Get, .Ok, headers);
+
+    expectError(error.UnknownTranfertEncoding, failure);
+}
+
+test "Frame Body - By default use a ContentLengthReader with a length of 0" {
+    var headers = Headers.init(std.testing.allocator);
+
+    var body_reader = try BodyReader.frame(.Get, .Ok, headers);
+
+    expect(body_reader == .ContentLength);
+    expect(body_reader.ContentLength.expected_length == 0);
+}
+
+test "Frame Body - Use a ContentLengthReader with the provided length" {
+    var headers = Headers.init(std.testing.allocator);
+    defer headers.deinit();
+    try headers.append("Content-Length", "15");
+
+    var body_reader = try BodyReader.frame(.Get, .Ok, headers);
+
+    expect(body_reader == .ContentLength);
+    expect(body_reader.ContentLength.expected_length == 15);
+}
+
+test "Frame Body - Fail when the provided content length is invalid" {
+    var headers = Headers.init(std.testing.allocator);
+    defer headers.deinit();
+    try headers.append("Content-Length", "XXX");
+
+    const failure = BodyReader.frame(.Get, .Ok, headers);
+
+    expectError(error.RemoteProtocolError, failure);
+}
+
 test "NoContentReader - Returns EndOfMessage." {
     const content = "";
     var reader = std.io.fixedBufferStream(content).reader();
@@ -138,51 +168,5 @@ test "NoContentReader - Returns EndOfMessage." {
     var buffer: [0]u8 = undefined;
     var event = try body_reader.read(reader, &buffer);
 
-    expect(event == .EndOfMessage);
-}
-
-test "ContentLengthReader - Fail when the body is shorter than expected." {
-    const content = "";
-    var reader = std.io.fixedBufferStream(content).reader();
-
-    var body_reader = ContentLengthReader.init(14);
-    var buffer: [32]u8 = undefined;
-    const failure = body_reader.read(reader, &buffer);
-
-    expectError(error.BodyTooshort, failure);
-}
-
-test "ContentLengthReader - Read" {
-    const content = "Gotta go fast!";
-    var reader = std.io.fixedBufferStream(content).reader();
-
-    var body_reader = ContentLengthReader.init(14);
-    var buffer: [32]u8 = undefined;
-    var event = try body_reader.read(reader, &buffer);
-
-    expect(std.mem.eql(u8, event.Data.bytes, "Gotta go fast!"));
-
-    event = try body_reader.read(reader, &buffer);
-    expect(event == .EndOfMessage);
-}
-
-test "ContentLengthReader - Read in several call" {
-    const content = "a" ** 32 ++ "b" ** 32 ++ "c" ** 32;
-    var reader = std.io.fixedBufferStream(content).reader();
-
-    var body_reader = ContentLengthReader.init(96);
-
-
-    var buffer: [32]u8 = undefined;
-    var event = try body_reader.read(reader, &buffer);
-    expect(std.mem.eql(u8, event.Data.bytes, "a" ** 32));
-
-    event = try body_reader.read(reader, &buffer);
-    expect(std.mem.eql(u8, event.Data.bytes, "b" ** 32));
-
-    event = try body_reader.read(reader, &buffer);
-    expect(std.mem.eql(u8, event.Data.bytes, "c" ** 32));
-
-    event = try body_reader.read(reader, &buffer);
     expect(event == .EndOfMessage);
 }
