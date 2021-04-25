@@ -1,43 +1,9 @@
-const Data = @import("events/events.zig").Data;
-const Event = @import("events/events.zig").Event;
-const std = @import("std");
+const ContentLengthReader = @import("content_length_reader.zig").ContentLengthReader;
+const Event = @import("../events/events.zig").Event;
 const Headers = @import("http").Headers;
 const Method = @import("http").Method;
-const Response = @import("events/events.zig").Response;
 const StatusCode = @import("http").StatusCode;
-
-pub const Error = error{
-    BodyTooshort,
-    BodyTooLarge,
-};
-
-pub const ContentLengthReader = struct {
-    expected_length: usize,
-    read_bytes: usize,
-
-    pub fn init(expected_length: usize) BodyReader {
-        return BodyReader {
-            .ContentLength = ContentLengthReader{ .expected_length = expected_length, .read_bytes = 0 },
-        };
-    }
-
-    pub fn read(self: *ContentLengthReader, reader: anytype, buffer: []u8) !Event {
-        if (self.read_bytes == self.expected_length) {
-            return .EndOfMessage;
-        }
-
-        var count = try reader.read(buffer);
-        if (count == 0) {
-            return Error.BodyTooshort;
-        }
-
-        self.read_bytes += count;
-        if (self.read_bytes > self.expected_length) {
-            return Error.BodyTooLarge;
-        }
-        return Event{ .Data = Data{ .bytes = buffer[0..count] } };
-    }
-};
+const std = @import("std");
 
 pub const BodyReaderType = enum {
     ContentLength,
@@ -83,7 +49,7 @@ pub const BodyReader = union(BodyReaderType) {
             contentLength = std.fmt.parseInt(usize, contentLengthHeader.?.value, 10) catch return error.RemoteProtocolError;
         }
 
-        return ContentLengthReader.init(contentLength);
+        return BodyReader{.ContentLength = ContentLengthReader{.expected_length = contentLength}};
     }
 };
 
@@ -138,51 +104,5 @@ test "NoContentReader - Returns EndOfMessage." {
     var buffer: [0]u8 = undefined;
     var event = try body_reader.read(reader, &buffer);
 
-    expect(event == .EndOfMessage);
-}
-
-test "ContentLengthReader - Fail when the body is shorter than expected." {
-    const content = "";
-    var reader = std.io.fixedBufferStream(content).reader();
-
-    var body_reader = ContentLengthReader.init(14);
-    var buffer: [32]u8 = undefined;
-    const failure = body_reader.read(reader, &buffer);
-
-    expectError(error.BodyTooshort, failure);
-}
-
-test "ContentLengthReader - Read" {
-    const content = "Gotta go fast!";
-    var reader = std.io.fixedBufferStream(content).reader();
-
-    var body_reader = ContentLengthReader.init(14);
-    var buffer: [32]u8 = undefined;
-    var event = try body_reader.read(reader, &buffer);
-
-    expect(std.mem.eql(u8, event.Data.bytes, "Gotta go fast!"));
-
-    event = try body_reader.read(reader, &buffer);
-    expect(event == .EndOfMessage);
-}
-
-test "ContentLengthReader - Read in several call" {
-    const content = "a" ** 32 ++ "b" ** 32 ++ "c" ** 32;
-    var reader = std.io.fixedBufferStream(content).reader();
-
-    var body_reader = ContentLengthReader.init(96);
-
-
-    var buffer: [32]u8 = undefined;
-    var event = try body_reader.read(reader, &buffer);
-    expect(std.mem.eql(u8, event.Data.bytes, "a" ** 32));
-
-    event = try body_reader.read(reader, &buffer);
-    expect(std.mem.eql(u8, event.Data.bytes, "b" ** 32));
-
-    event = try body_reader.read(reader, &buffer);
-    expect(std.mem.eql(u8, event.Data.bytes, "c" ** 32));
-
-    event = try body_reader.read(reader, &buffer);
     expect(event == .EndOfMessage);
 }
