@@ -130,6 +130,36 @@ test "Frame Body - Fail when chunked is not the final encoding" {
     expectError(error.UnknownTranfertEncoding, failure);
 }
 
+test "Frame Body - By default use a ContentLengthReader with a length of 0" {
+    var headers = Headers.init(std.testing.allocator);
+
+    var body_reader = try BodyReader.frame(.Get, .Ok, headers);
+
+    expect(body_reader == .ContentLength);
+    expect(body_reader.ContentLength.expected_length == 0);
+}
+
+test "Frame Body - Use a ContentLengthReader with the provided length" {
+    var headers = Headers.init(std.testing.allocator);
+    defer headers.deinit();
+    try headers.append("Content-Length", "15");
+
+    var body_reader = try BodyReader.frame(.Get, .Ok, headers);
+
+    expect(body_reader == .ContentLength);
+    expect(body_reader.ContentLength.expected_length == 15);
+}
+
+test "Frame Body - Fail when the provided content length is invalid" {
+    var headers = Headers.init(std.testing.allocator);
+    defer headers.deinit();
+    try headers.append("Content-Length", "XXX");
+
+    const failure = BodyReader.frame(.Get, .Ok, headers);
+
+    expectError(error.RemoteProtocolError, failure);
+}
+
 test "NoContentReader - Returns EndOfMessage." {
     const content = "";
     var reader = std.io.fixedBufferStream(content).reader();
