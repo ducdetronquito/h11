@@ -9,70 +9,75 @@ const std = @import("std");
 const SMError = @import("errors.zig").SMError;
 const Version = @import("http").Version;
 
-pub const ClientSM = struct {
-    allocator: *Allocator,
-    state: State,
+pub fn ClientSM(comptime Writer: type) type {
+    return struct {
+        const Self = @This();
+        allocator: *Allocator,
+        state: State,
+        writer: Writer,
+        const Error = SMError || Writer.Error;
 
-    pub fn init(allocator: *Allocator) ClientSM {
-        return ClientSM{ .allocator = allocator, .state = State.Idle };
-    }
+        pub fn init(allocator: *Allocator, writer: Writer) Self {
+            return .{ .allocator = allocator, .state = State.Idle, .writer = writer};
+        }
 
-    pub fn deinit(self: *ClientSM) void {
-        self.state = State.Idle;
-    }
+        pub fn deinit(self: *Self) void {
+            self.state = State.Idle;
+        }
 
-    pub fn send(self: *ClientSM, event: Event) SMError![]const u8 {
-        return switch (self.state) {
-            .Idle => self.sendRequest(event),
-            .SendBody => self.sendData(event),
-            .Done, .Closed => self.closeConnection(event),
-            else => self.triggerLocalProtocolError(),
-        };
-    }
+        pub fn send(self: *Self, event: Event) Error!void {
+            switch (self.state) {
+                .Idle => try self.sendRequest(event),
+                .SendBody => try self.sendData(event),
+                .Done, .Closed => try self.closeConnection(event),
+                else => try self.triggerLocalProtocolError()
+            }
+        }
 
-    fn sendRequest(self: *ClientSM, event: Event) SMError![]const u8 {
-        return switch (event) {
-            .Request => |request| then: {
-                var result = try request.serialize(self.allocator);
-                self.state = .SendBody;
-                break :then result;
-            },
-            else => self.triggerLocalProtocolError(),
-        };
-    }
+        fn sendRequest(self: *Self, event: Event) Error!void {
+            switch (event) {
+                .Request => |request| {
+                    var result = try request.serialize(self.allocator);
+                    defer self.allocator.free(result);
 
-    fn sendData(self: *ClientSM, event: Event) SMError![]const u8 {
-        return switch (event) {
-            .Data => |data| data.bytes,
-            .EndOfMessage => then: {
-                self.state = .Done;
-                break :then "";
-            },
-            else => self.triggerLocalProtocolError(),
-        };
-    }
+                    _ = try self.writer.write(result);
+                    self.state = .SendBody;
+                },
+                else => try self.triggerLocalProtocolError(),
+            }
+        }
 
-    fn closeConnection(self: *ClientSM, event: Event) SMError![]const u8 {
-        return switch (event) {
-            .ConnectionClosed => then: {
-                self.state = .Closed;
-                break :then "";
-            },
-            else => self.triggerLocalProtocolError(),
-        };
-    }
+        fn sendData(self: *Self, event: Event) Error!void {
+            switch (event) {
+                .Data => |data| _ = try self.writer.write(data.bytes),
+                .EndOfMessage => self.state = .Done,
+                else => try self.triggerLocalProtocolError(),
+            }
+        }
 
-    inline fn triggerLocalProtocolError(self: *ClientSM) SMError![]const u8 {
-        self.state = .Error;
-        return error.LocalProtocolError;
-    }
-};
+        fn closeConnection(self: *Self, event: Event) SMError!void {
+            switch (event) {
+                .ConnectionClosed => self.state = .Closed,
+                else => try self.triggerLocalProtocolError(),
+            }
+        }
+
+        inline fn triggerLocalProtocolError(self: *Self) SMError!void {
+            self.state = .Error;
+            return error.LocalProtocolError;
+        }
+    };
+}
 
 const expect = std.testing.expect;
 const expectError = std.testing.expectError;
 
+const TestClientSM = ClientSM(std.io.FixedBufferStream([]u8).Writer);
+
 test "Send - Can send a Request event when state is Idle" {
-    var client = ClientSM.init(std.testing.allocator);
+    var buffer: [100]u8 = undefined;
+    var fixed_buffer = std.io.fixedBufferStream(&buffer);
+    var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
 
     var headers = Headers.init(std.testing.allocator);
     _ = try headers.append("Host", "www.ziglang.org");
@@ -80,101 +85,115 @@ test "Send - Can send a Request event when state is Idle" {
     defer headers.deinit();
 
     var requestEvent = try Request.init(Method.Get, "/", Version.Http11, headers);
-
-    var result = try client.send(Event{ .Request = requestEvent });
-    defer std.testing.allocator.free(result);
+    try client.send(Event{ .Request = requestEvent });
 
     var expected = "GET / HTTP/1.1\r\nHost: www.ziglang.org\r\nGOTTA-GO: FAST!\r\n\r\n";
-    expect(std.mem.eql(u8, result, expected));
+    expect(std.mem.startsWith(u8, &buffer, expected));
     expect(client.state == .SendBody);
 }
 
 test "Send - Cannot send any other event when state is Idle" {
-    var client = ClientSM.init(std.testing.allocator);
+    var buffer: [100]u8 = undefined;
+    var fixed_buffer = std.io.fixedBufferStream(&buffer);
+    var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
 
-    var result = client.send(.EndOfMessage);
+    const failure = client.send(.EndOfMessage);
 
     expect(client.state == .Error);
-    expectError(error.LocalProtocolError, result);
+    expectError(error.LocalProtocolError, failure);
 }
 
 test "Send - Can send a Data event when state is SendBody" {
-    var client = ClientSM.init(std.testing.allocator);
+    var buffer: [100]u8 = undefined;
+    var fixed_buffer = std.io.fixedBufferStream(&buffer);
+    var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
+
     client.state = .SendBody;
     var data = Event { .Data = Data { .bytes = "It's raining outside, damned Brittany !" } };
 
-    var result = try client.send(data);
+    try client.send(data);
 
     expect(client.state == .SendBody);
-    expect(std.mem.eql(u8, result, "It's raining outside, damned Brittany !"));
+    expect(std.mem.startsWith(u8, &buffer, "It's raining outside, damned Brittany !"));
 }
 
 test "Send - Can send a EndOfMessage event when state is SendBody" {
-    var client = ClientSM.init(std.testing.allocator);
+    var buffer: [100]u8 = undefined;
+    var fixed_buffer = std.io.fixedBufferStream(&buffer);
+    var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
     client.state = .SendBody;
 
     var result = try client.send(.EndOfMessage);
 
     expect(client.state == .Done);
-    expect(std.mem.eql(u8, result, ""));
 }
 
 test "Send - Cannot send any other event when state is SendBody" {
-    var client = ClientSM.init(std.testing.allocator);
+    var buffer: [100]u8 = undefined;
+    var fixed_buffer = std.io.fixedBufferStream(&buffer);
+    var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
     client.state = .SendBody;
 
-    var result = client.send(.ConnectionClosed);
+    const failure = client.send(.ConnectionClosed);
 
     expect(client.state == .Error);
-    expectError(error.LocalProtocolError, result);
+    expectError(error.LocalProtocolError, failure);
 }
 
 test "Send - Can send a ConnectionClosed event when state is Done" {
-    var client = ClientSM.init(std.testing.allocator);
+    var buffer: [100]u8 = undefined;
+    var fixed_buffer = std.io.fixedBufferStream(&buffer);
+    var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
     client.state = .Done;
 
     var result = try client.send(.ConnectionClosed);
 
     expect(client.state == .Closed);
-    expect(std.mem.eql(u8, result, ""));
 }
 
 test "Send - Cannot send any other event when state is Done" {
-    var client = ClientSM.init(std.testing.allocator);
+    var buffer: [100]u8 = undefined;
+    var fixed_buffer = std.io.fixedBufferStream(&buffer);
+    var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
     client.state = .Done;
 
-    var result = client.send(.EndOfMessage);
+    const failure = client.send(.EndOfMessage);
 
     expect(client.state == .Error);
-    expectError(error.LocalProtocolError, result);
+    expectError(error.LocalProtocolError, failure);
 }
 
 test "Send - Can send a ConnectionClosed event when state is Closed" {
-    var client = ClientSM.init(std.testing.allocator);
+    var buffer: [100]u8 = undefined;
+    var fixed_buffer = std.io.fixedBufferStream(&buffer);
+    var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
     client.state = .Closed;
 
     var result = try client.send(.ConnectionClosed);
 
     expect(client.state == .Closed);
-    expect(std.mem.eql(u8, result, ""));
 }
 
 test "Send - Cannot send any other event when state is Closed" {
-    var client = ClientSM.init(std.testing.allocator);
+    var buffer: [100]u8 = undefined;
+    var fixed_buffer = std.io.fixedBufferStream(&buffer);
+    var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
     client.state = .Closed;
 
-    var result = client.send(.EndOfMessage);
+    const failure = client.send(.EndOfMessage);
 
     expect(client.state == .Error);
-    expectError(error.LocalProtocolError, result);
+    expectError(error.LocalProtocolError, failure);
 }
 
 test "Send - Cannot send any event when state is Error" {
-    var client = ClientSM.init(std.testing.allocator);
+    var buffer: [100]u8 = undefined;
+    var fixed_buffer = std.io.fixedBufferStream(&buffer);
+    var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
     client.state = .Error;
 
-    var result = client.send(.EndOfMessage);
+    const failure = client.send(.EndOfMessage);
 
     expect(client.state == .Error);
-    expectError(error.LocalProtocolError, result);
+    expectError(error.LocalProtocolError, failure);
 }

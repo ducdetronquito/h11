@@ -5,85 +5,91 @@ const ServerSM = @import("state_machines/server.zig").ServerSM;
 const SMError = @import("state_machines/errors.zig").SMError;
 const std = @import("std");
 
-pub const Client = struct {
-    localState: ClientSM,
-    remoteState: ServerSM,
+pub fn Client(comptime Reader: type, comptime Writer: type) type {
+    return struct {
+        const Self = @This();
+        localState: ClientSM(Writer),
+        remoteState: ServerSM(Reader),
 
-    const Error = SMError;
+        pub fn init(allocator: *Allocator, reader: Reader, writer: Writer) Self {
+            var localState = ClientSM(Writer).init(allocator, writer);
+            var remoteState = ServerSM(Reader).init(allocator, reader);
 
-    pub fn init(allocator: *Allocator) Client {
-        var localState = ClientSM.init(allocator);
-        var remoteState = ServerSM.init(allocator);
+            return Self {
+                .localState = localState,
+                .remoteState = remoteState,
+            };
+        }
 
-        return Client{
-            .localState = localState,
-            .remoteState = remoteState,
-        };
-    }
+        pub fn deinit(self: *Self) void {
+            self.localState.deinit();
+            self.remoteState.deinit();
+        }
 
-    pub fn deinit(self: *Client) void {
-        self.localState.deinit();
-        self.remoteState.deinit();
-    }
+        pub fn send(self: *Self, event: Event) !void{
+            try self.localState.send(event);
+            self.remoteState.expectEvent(event);
+        }
 
-    pub fn send(self: *Client, event: Event) Error![]const u8 {
-        var bytes = try self.localState.send(event);
-        self.remoteState.expectEvent(event);
-        return bytes;
-    }
-
-    pub fn nextEvent(self: *Client, reader: anytype, options: anytype) !Event {
-        return self.remoteState.nextEvent(reader, options);
-    }
-};
+        pub fn nextEvent(self: *Self, options: anytype) !Event {
+            return self.remoteState.nextEvent(options);
+        }
+    };
+}
 
 const expect = std.testing.expect;
 const expectError = std.testing.expectError;
-const Headers = @import("http").Headers;
 const Request = @import("events/events.zig").Request;
+const TestClient = Client(std.io.FixedBufferStream([]const u8).Reader, std.io.FixedBufferStream([]u8).Writer);
 
 test "Send - Client can send an event" {
-    var client = Client.init(std.testing.allocator);
+    var read_buffer = "";
+    var fixed_read_buffer = std.io.fixedBufferStream(read_buffer);
+    var write_buffer: [100]u8 = undefined;
+    var fixed_write_buffer = std.io.fixedBufferStream(&write_buffer);
+    var client = TestClient.init(std.testing.allocator, fixed_read_buffer.reader(), fixed_write_buffer.writer());
     defer client.deinit();
 
     client.localState.state = .SendBody;
-
-    var result = try client.send(.EndOfMessage);
+    try client.send(.EndOfMessage);
+    expect(std.mem.startsWith(u8, &write_buffer, ""));
 }
 
 test "Send - Remember the request method when sending a request event" {
-    var client = Client.init(std.testing.allocator);
+    var read_buffer = "";
+    var fixed_read_buffer = std.io.fixedBufferStream(read_buffer);
+    var write_buffer: [100]u8 = undefined;
+    var fixed_write_buffer = std.io.fixedBufferStream(&write_buffer);
+    var client = TestClient.init(std.testing.allocator, fixed_read_buffer.reader(), fixed_write_buffer.writer());
     defer client.deinit();
 
     var request = Request.default(std.testing.allocator);
-    var bytes = try client.send(Event{ .Request = request });
-    std.testing.allocator.free(bytes);
+    try client.send(Event{ .Request = request });
 
     expect(client.remoteState.expected_request.?.method == .Get);
 }
 
 test "NextEvent - A Response event with a content length muste be followed by a Data event and an EndOfMessage event." {
-    var client = Client.init(std.testing.allocator);
-    defer client.deinit();
+    var content = "HTTP/1.1 200 OK\r\nContent-Length: 34\r\n\r\nAin't no sunshine when she's gone.";
+    var fixed_read_buffer = std.io.fixedBufferStream(content);
+    var write_buffer: [100]u8 = undefined;
+    var fixed_write_buffer = std.io.fixedBufferStream(&write_buffer);
+    var client = TestClient.init(std.testing.allocator, fixed_read_buffer.reader(), fixed_write_buffer.writer());
 
     var request = Request.default(std.testing.allocator);
-    var bytes = try client.send(Event{ .Request = request });
-    std.testing.allocator.free(bytes);
+    try client.send(Event{ .Request = request });
 
-    const content = "HTTP/1.1 200 OK\r\nContent-Length: 34\r\n\r\nAin't no sunshine when she's gone.";
-    var reader = std.io.fixedBufferStream(content).reader();
-
-    var event = try client.nextEvent(reader, .{});
+    var event = try client.nextEvent(.{});
     expect(event == .Response);
     var response = event.Response;
     defer response.deinit();
 
     var buffer: [100]u8 = undefined;
-    event = try client.nextEvent(reader, .{ .buffer = &buffer });
+    event = try client.nextEvent(.{ .buffer = &buffer });
     expect(event == .Data);
     var data = event.Data;
 
-    event = try client.nextEvent(reader, .{ .buffer = &buffer });
+    event = try client.nextEvent(.{ .buffer = &buffer });
     expect(event == .EndOfMessage);
 
     client.deinit();
