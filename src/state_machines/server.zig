@@ -13,6 +13,9 @@ const std = @import("std");
 const utils = @import("utils.zig");
 const Version = @import("http").Version;
 
+const BufferSize = 4096;
+const BufferType = std.fifo.LinearFifo(u8, std.fifo.LinearFifoBufferType{ .Static = BufferSize });
+
 pub fn ServerSM(comptime Reader: type) type {
     return struct {
         const Self = @This();
@@ -21,8 +24,7 @@ pub fn ServerSM(comptime Reader: type) type {
         body_reader: BodyReader,
         expected_request: ?Request,
         state: State,
-        body_buffer: [4096]u8 = undefined,
-        body_buffer_length: usize = 0,
+        body_buffer: BufferType = BufferType.init(),
         reader: Reader,
 
         pub fn init(allocator: *Allocator, reader: Reader) Self {
@@ -96,12 +98,12 @@ pub fn ServerSM(comptime Reader: type) type {
         }
 
         fn readRawResponse(self: *Self) ![]u8 {
-            var response_buffer = try std.ArrayList(u8).initCapacity(self.allocator, 4096);
+            var response_buffer = try std.ArrayList(u8).initCapacity(self.allocator, BufferSize);
             errdefer response_buffer.deinit();
 
             var last_3_chars: [3]u8 = undefined;
             while (true) {
-                var buffer: [4096]u8 = undefined;
+                var buffer: [BufferSize]u8 = undefined;
                 const count = try self.reader.read(&buffer);
                 var bytes = buffer[0..count];
 
@@ -111,20 +113,17 @@ pub fn ServerSM(comptime Reader: type) type {
 
                 if (last_3_chars[0] == '\r' and last_3_chars[1] == '\n' and last_3_chars[2] == '\r' and bytes[0] == '\n') {
                     var body = bytes[1..];
-                    std.mem.copy(u8, &self.body_buffer, body);
-                    self.body_buffer_length = body.len;
+                    try self.body_buffer.write(body);
                     try response_buffer.append('\n');
                     break;
                 } else if (last_3_chars[1] == '\r' and last_3_chars[2] == '\n' and bytes[0] == '\r' and bytes[1] == '\n') {
                     var body = bytes[2..];
-                    std.mem.copy(u8, &self.body_buffer, body);
-                    self.body_buffer_length = body.len;
+                    try self.body_buffer.write(body);
                     try response_buffer.appendSlice("\r\n");
                     break;
                 } else if (last_3_chars[2] == '\r' and bytes[0] == '\n' and bytes[1] == '\r' and bytes[2] == '\n') {
                     var body = bytes[3..];
-                    std.mem.copy(u8, &self.body_buffer, body);
-                    self.body_buffer_length = body.len;
+                    try self.body_buffer.write(body);
                     try response_buffer.appendSlice("\n\r\n");
                     break;
                 }
@@ -138,8 +137,7 @@ pub fn ServerSM(comptime Reader: type) type {
                 try response_buffer.appendSlice(bytes[0..end_of_response + 4]);
                 if (end_of_response != bytes.len - 4) {
                     var body = bytes[end_of_response + 4..];
-                    std.mem.copy(u8, &self.body_buffer, body);
-                    self.body_buffer_length = body.len;
+                    try self.body_buffer.write(body);
                 }
                 break;
             }
@@ -151,11 +149,8 @@ pub fn ServerSM(comptime Reader: type) type {
             if (!@hasField(@TypeOf(options), "buffer")) {
                 @panic("You must provide a buffer to read into.");
             }
-            if (self.body_buffer_length > 0) {
-                var fixed_stream = std.io.fixedBufferStream(self.body_buffer[0..self.body_buffer_length]);
-                var event = try self.body_reader.read(fixed_stream.reader(), options.buffer);
-                self.body_buffer_length -= event.Data.bytes.len;
-                return event;
+            if (self.body_buffer.count > 0) {
+                return try self.body_reader.read(self.body_buffer.reader(), options.buffer);
             }
             return try self.body_reader.read(self.reader, options.buffer);
         }
