@@ -64,7 +64,10 @@ pub fn ServerSM(comptime Reader: type) type {
                     return event;
                 },
                 .SendBody => {
-                    var event = self.readData(options) catch |err| return err;
+                    var event = self.readData(options) catch |err| {
+                        self.state = .Error;
+                        return err;
+                    };
                     if (event == .EndOfMessage) {
                         self.state = .Done;
                     }
@@ -74,13 +77,8 @@ pub fn ServerSM(comptime Reader: type) type {
                     self.state = .Closed;
                     return .ConnectionClosed;
                 },
-                .Closed => {
-                    return .ConnectionClosed;
-                },
-                else => {
-                    self.state = .Error;
-                    return error.RemoteProtocolError;
-                },
+                .Closed => .ConnectionClosed,
+                .Error => error.RemoteProtocolError,
             };
         }
 
@@ -96,6 +94,16 @@ pub fn ServerSM(comptime Reader: type) type {
             self.body_reader = try BodyReader.frame(self.expected_request.?.method, response.statusCode, response.headers);
 
             return Event{ .Response = response };
+        }
+
+        fn readData(self: *Self, options: anytype) !Event {
+            if (!@hasField(@TypeOf(options), "buffer")) {
+                @panic("You must provide a buffer to read into.");
+            }
+            if (self.body_buffer.count > 0) {
+                return try self.body_reader.?.read(self.body_buffer.reader(), options.buffer);
+            }
+            return try self.body_reader.?.read(self.reader, options.buffer);
         }
 
         fn readRawResponse(self: *Self) ![]u8 {
@@ -136,24 +144,11 @@ pub fn ServerSM(comptime Reader: type) type {
                 };
 
                 try response_buffer.appendSlice(bytes[0..end_of_response + 4]);
-                if (end_of_response != bytes.len - 4) {
-                    var body = bytes[end_of_response + 4..];
-                    try self.body_buffer.write(body);
-                }
+                try self.body_buffer.write(bytes[end_of_response + 4..]);
                 break;
             }
 
             return response_buffer.toOwnedSlice();
-        }
-
-        fn readData(self: *Self, options: anytype) !Event {
-            if (!@hasField(@TypeOf(options), "buffer")) {
-                @panic("You must provide a buffer to read into.");
-            }
-            if (self.body_buffer.count > 0) {
-                return try self.body_reader.?.read(self.body_buffer.reader(), options.buffer);
-            }
-            return try self.body_reader.?.read(self.reader, options.buffer);
         }
     };
 }
