@@ -15,6 +15,7 @@ const Version = @import("http").Version;
 
 const BufferSize = 4096;
 const BufferType = std.fifo.LinearFifo(u8, std.fifo.LinearFifoBufferType{ .Static = BufferSize });
+const MaximumResponseSize = 64_000;
 
 pub fn ServerSM(comptime Reader: type) type {
     return struct {
@@ -107,7 +108,7 @@ pub fn ServerSM(comptime Reader: type) type {
                 const count = try self.reader.read(&buffer);
                 var bytes = buffer[0..count];
 
-                if (count == 0 or response_buffer.items.len + bytes.len > 64_000) {
+                if (count == 0 or response_buffer.items.len + bytes.len > MaximumResponseSize) {
                     return error.ResponseTooLarge;
                 }
 
