@@ -17,10 +17,6 @@ pub const BodyReader = union(BodyReaderType) {
     ContentLength: ContentLengthReader,
     NoContent: void,
 
-    pub fn default() BodyReader {
-        return BodyReader{ .NoContent = undefined };
-    }
-
     pub fn read(self: *BodyReader, reader: anytype, buffer: []u8) !Event {
         return switch (self.*) {
             .Chunked => |*chunked_reader| try chunked_reader.read(reader, buffer),

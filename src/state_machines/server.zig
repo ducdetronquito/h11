@@ -22,7 +22,7 @@ pub fn ServerSM(comptime Reader: type) type {
         const Self = @This();
 
         allocator: *Allocator,
-        body_reader: BodyReader,
+        body_reader: ?BodyReader,
         expected_request: ?Request,
         state: State,
         body_buffer: BufferType = BufferType.init(),
@@ -31,7 +31,7 @@ pub fn ServerSM(comptime Reader: type) type {
         pub fn init(allocator: *Allocator, reader: Reader) Self {
             return .{
                 .allocator = allocator,
-                .body_reader = BodyReader.default(),
+                .body_reader = null,
                 .expected_request = null,
                 .state = State.Idle,
                 .reader = reader
@@ -39,7 +39,7 @@ pub fn ServerSM(comptime Reader: type) type {
         }
 
         pub fn deinit(self: *Self) void {
-            self.body_reader = BodyReader.default();
+            self.body_reader = null;
             self.expected_request = null;
             self.state = State.Idle;
         }
@@ -151,9 +151,9 @@ pub fn ServerSM(comptime Reader: type) type {
                 @panic("You must provide a buffer to read into.");
             }
             if (self.body_buffer.count > 0) {
-                return try self.body_reader.read(self.body_buffer.reader(), options.buffer);
+                return try self.body_reader.?.read(self.body_buffer.reader(), options.buffer);
             }
-            return try self.body_reader.read(self.reader, options.buffer);
+            return try self.body_reader.?.read(self.reader, options.buffer);
         }
     };
 }
