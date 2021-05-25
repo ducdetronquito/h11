@@ -18,7 +18,7 @@ fn FixedBuffer(comptime T: usize) type {
             self.pos = 0;
 
             if (self.length == 0) {
-                return error.RemoteProtocolError;
+                return error.EndOfStream; // If I already read data in the user buffer, I should give it back and their return an error.EndOfStream.
             }
         }
 
@@ -56,6 +56,7 @@ pub fn ChunkedReader(comptime T: usize) type {
 
         pub fn read(self: *Self, reader: anytype, buffer: []u8) !Event {
             while(true) {
+
                 try self.inner_buffer.refill(reader);
                 var event = try switch(self.state) {
                     .ReadChunkSize => self.readChunkSize(reader, buffer),
@@ -301,5 +302,5 @@ test "ChunkedReader - Fail when not enough data can be read" {
     var buffer: [50]u8 = undefined;
 
     var failure = body_reader.read(reader, &buffer);
-    expectError(error.RemoteProtocolError, failure);
+    expectError(error.EndOfStream, failure);
 }
