@@ -13,9 +13,8 @@ const std = @import("std");
 const utils = @import("utils.zig");
 const Version = @import("http").Version;
 
-const BufferSize = 4096;
-const BufferType = std.fifo.LinearFifo(u8, std.fifo.LinearFifoBufferType{ .Static = BufferSize });
 const MaximumResponseSize = 64_000;
+const ReaderLookahead = 32;
 
 pub fn ServerSM(comptime Reader: type) type {
     return struct {
@@ -25,8 +24,7 @@ pub fn ServerSM(comptime Reader: type) type {
         body_reader: ?BodyReader,
         expected_request: ?Request,
         state: State,
-        body_buffer: BufferType = BufferType.init(),
-        reader: Reader,
+        reader: std.io.PeekStream(.{ .Static = ReaderLookahead }, Reader),
 
         pub fn init(allocator: *Allocator, reader: Reader) Self {
             return .{
@@ -34,7 +32,7 @@ pub fn ServerSM(comptime Reader: type) type {
                 .body_reader = null,
                 .expected_request = null,
                 .state = State.Idle,
-                .reader = reader
+                .reader = std.io.peekStream(ReaderLookahead, reader)
             };
         }
 
@@ -100,52 +98,54 @@ pub fn ServerSM(comptime Reader: type) type {
             if (!@hasField(@TypeOf(options), "buffer")) {
                 @panic("You must provide a buffer to read into.");
             }
-            if (self.body_buffer.count > 0) {
-                return try self.body_reader.?.read(self.body_buffer.reader(), options.buffer);
-            }
-            return try self.body_reader.?.read(self.reader, options.buffer);
+            return try self.body_reader.?.read(&self.reader, options.buffer);
         }
 
         fn readRawResponse(self: *Self) ![]u8 {
-            var response_buffer = try std.ArrayList(u8).initCapacity(self.allocator, BufferSize);
+            var response_buffer = std.ArrayList(u8).init(self.allocator);
             errdefer response_buffer.deinit();
 
-            var last_3_chars: [3]u8 = undefined;
-            while (true) {
-                var buffer: [BufferSize]u8 = undefined;
-                const count = try self.reader.read(&buffer);
-                var bytes = buffer[0..count];
+            var buffer: [ReaderLookahead]u8 = undefined;
+            var count = try self.reader.read(&buffer);
+            if (count == 0) {
+                return error.EndOfStream;
+            }
 
-                if (count == 0 or response_buffer.items.len + bytes.len > MaximumResponseSize) {
+            var index = std.mem.indexOf(u8, &buffer, "\r\n\r\n");
+            if (index != null) {
+                const response = buffer[0 .. index.? + 4];
+                try response_buffer.appendSlice(response);
+                if (response.len < count) {
+                    try self.reader.putBack(buffer[response.len .. count]);
+                }
+                return response_buffer.toOwnedSlice();
+            }
+
+            try response_buffer.appendSlice(buffer[0..count]);
+            try self.reader.putBack(buffer[count - 3 .. count]);
+
+            while (true) {
+                if (response_buffer.items.len > MaximumResponseSize) {
                     return error.ResponseTooLarge;
                 }
 
-                if (last_3_chars[0] == '\r' and last_3_chars[1] == '\n' and last_3_chars[2] == '\r' and bytes[0] == '\n') {
-                    var body = bytes[1..];
-                    try self.body_buffer.write(body);
-                    try response_buffer.append('\n');
-                    break;
-                } else if (last_3_chars[1] == '\r' and last_3_chars[2] == '\n' and bytes[0] == '\r' and bytes[1] == '\n') {
-                    var body = bytes[2..];
-                    try self.body_buffer.write(body);
-                    try response_buffer.appendSlice("\r\n");
-                    break;
-                } else if (last_3_chars[2] == '\r' and bytes[0] == '\n' and bytes[1] == '\r' and bytes[2] == '\n') {
-                    var body = bytes[3..];
-                    try self.body_buffer.write(body);
-                    try response_buffer.appendSlice("\n\r\n");
+                count = try self.reader.read(&buffer);
+                if (count == 0) {
+                    return error.EndOfStream;
+                }
+
+                index = std.mem.indexOf(u8, &buffer, "\r\n\r\n");
+                if (index != null) {
+                    const response_end = index.? + 4;
+                    try response_buffer.appendSlice(buffer[3 .. response_end]);
+
+                    var body = buffer[response_end .. count];
+                    try self.reader.putBack(body);
                     break;
                 }
 
-                var end_of_response = std.mem.indexOf(u8, bytes, "\r\n\r\n") orelse {
-                    std.mem.copy(u8, &last_3_chars, bytes[bytes.len-3..]);
-                    try response_buffer.appendSlice(bytes);
-                    continue;
-                };
-
-                try response_buffer.appendSlice(bytes[0..end_of_response + 4]);
-                try self.body_buffer.write(bytes[end_of_response + 4..]);
-                break;
+                try response_buffer.appendSlice(buffer[3 .. count]);
+                try self.reader.putBack(buffer[count - 3 .. count]);
             }
 
             return response_buffer.toOwnedSlice();
@@ -205,31 +205,6 @@ test "NextEvent - Can retrieve a Response and Data when state is Idle" {
     event = try server.nextEvent(.{ .buffer = &buffer});
     expect(event == .EndOfMessage);
     expect(server.state == .Done);
-}
-
-test "NextEvent - Read response in various read" {
-    var responses = [_][]const u8 {
-        "HTTP/1.1 200 OK\r\nContent-Length: 14\r\nCookie: " ++ "a" ** 4047 ++ "\r\n\r\nGotta go fast!",
-        "HTTP/1.1 200 OK\r\nContent-Length: 14\r\nCookie: " ++ "a" ** 4048 ++ "\r\n\r\nGotta go fast!",
-        "HTTP/1.1 200 OK\r\nContent-Length: 14\r\nCookie: " ++ "a" ** 4049 ++ "\r\n\r\nGotta go fast!",
-        "HTTP/1.1 200 OK\r\nContent-Length: 14\r\nCookie: " ++ "a" ** 4050 ++ "\r\n\r\nGotta go fast!",
-    };
-    for(responses) |response| {
-        var reader = std.io.fixedBufferStream(response).reader();
-        var server = TestServerSM.init(std.testing.allocator, reader);
-        defer server.deinit();
-
-        var request = Request.default(std.testing.allocator);
-        defer request.deinit();
-        server.expectEvent(Event{ .Request = request });
-
-        var event = try server.nextEvent(.{});
-        event.Response.deinit();
-
-        var buffer: [100]u8 = undefined;
-        event = try server.nextEvent(.{ .buffer = &buffer});
-        expect(std.mem.eql(u8, event.Data.bytes, "Gotta go fast!"));
-    }
 }
 
 test "NextEvent - When the response size is above the limit - Returns ResponseTooLarge" {
