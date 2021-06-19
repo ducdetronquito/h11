@@ -154,6 +154,7 @@ pub fn ServerSM(comptime Reader: type) type {
 }
 
 const expect = std.testing.expect;
+const expectEqualStrings = std.testing.expectEqualStrings;
 const expectError = std.testing.expectError;
 const Headers = @import("http").Headers;
 
@@ -170,14 +171,14 @@ test "NextEvent - Can retrieve a Response event when state is Idle" {
     server.expectEvent(Event{ .Request = request });
 
     var event = try server.nextEvent(.{});
-    expect(event.Response.statusCode == .Ok);
-    expect(event.Response.version == .Http11);
-    expect(server.state == .SendBody);
+    try expect(event.Response.statusCode == .Ok);
+    try expect(event.Response.version == .Http11);
+    try expect(server.state == .SendBody);
     event.Response.deinit();
 
     var buffer: [100]u8 = undefined;
     event = try server.nextEvent(.{ .buffer = &buffer });
-    expect(event == .EndOfMessage);
+    try expect(event == .EndOfMessage);
 }
 
 test "NextEvent - Can retrieve a Response and Data when state is Idle" {
@@ -191,20 +192,20 @@ test "NextEvent - Can retrieve a Response and Data when state is Idle" {
     server.expectEvent(Event{ .Request = request });
 
     var event = try server.nextEvent(.{});
-    expect(event.Response.statusCode == .Ok);
-    expect(event.Response.version == .Http11);
-    expect(server.state == .SendBody);
+    try expect(event.Response.statusCode == .Ok);
+    try expect(event.Response.version == .Http11);
+    try expect(server.state == .SendBody);
     event.Response.deinit();
 
     var buffer: [100]u8 = undefined;
     event = try server.nextEvent(.{ .buffer = &buffer });
-    expect(std.mem.eql(u8, event.Data.bytes, "Gotta go fast!"));
-    expect(std.mem.eql(u8, buffer[0..14], "Gotta go fast!"));
-    expect(server.state == .SendBody);
+    try expectEqualStrings(event.Data.bytes, "Gotta go fast!");
+    try expectEqualStrings(buffer[0..14], "Gotta go fast!");
+    try expect(server.state == .SendBody);
 
     event = try server.nextEvent(.{ .buffer = &buffer});
-    expect(event == .EndOfMessage);
-    expect(server.state == .Done);
+    try expect(event == .EndOfMessage);
+    try expect(server.state == .Done);
 }
 
 test "NextEvent - When the response size is above the limit - Returns ResponseTooLarge" {
@@ -219,7 +220,7 @@ test "NextEvent - When the response size is above the limit - Returns ResponseTo
 
     const failure = server.nextEvent(.{});
 
-    expectError(error.ResponseTooLarge, failure);
+    try expectError(error.ResponseTooLarge, failure);
 }
 
 test "NextEvent - When fail to read from the reader - Returns reader' error" {
@@ -247,7 +248,7 @@ test "NextEvent - When fail to read from the reader - Returns reader' error" {
 
     const failure = server.nextEvent(.{});
 
-    expectError(error.Failed, failure);
+    try expectError(error.Failed, failure);
 }
 
 test "NextEvent - Cannot retrieve a response event if the data is invalid" {
@@ -258,8 +259,8 @@ test "NextEvent - Cannot retrieve a response event if the data is invalid" {
 
     var event = server.nextEvent(.{});
 
-    expectError(error.Invalid, event);
-    expect(server.state == .Error);
+    try expectError(error.Invalid, event);
+    try expect(server.state == .Error);
 }
 
 test "NextEvent - Retrieve a ConnectionClosed event when state is Done" {
@@ -271,8 +272,8 @@ test "NextEvent - Retrieve a ConnectionClosed event when state is Done" {
 
     var event = try server.nextEvent(.{});
 
-    expect(event == .ConnectionClosed);
-    expect(server.state == .Closed);
+    try expect(event == .ConnectionClosed);
+    try expect(server.state == .Closed);
 }
 
 test "NextEvent - Retrieve a ConnectionClosed event when state is Closed" {
@@ -284,6 +285,6 @@ test "NextEvent - Retrieve a ConnectionClosed event when state is Closed" {
 
     var event = try server.nextEvent(.{});
 
-    expect(event == .ConnectionClosed);
-    expect(server.state == .Closed);
+    try expect(event == .ConnectionClosed);
+    try expect(server.state == .Closed);
 }

@@ -71,7 +71,7 @@ test "Frame Body - A HEAD request has no content" {
 
     var body_reader = try BodyReader.frame(.Head, .Ok, headers);
 
-    expect(body_reader == .NoContent);
+    try expect(body_reader == .NoContent);
 }
 
 test "Frame Body - Informational responses (1XX status code) have no content" {
@@ -79,7 +79,7 @@ test "Frame Body - Informational responses (1XX status code) have no content" {
 
     var body_reader = try BodyReader.frame(.Get, .Continue, headers);
 
-    expect(body_reader == .NoContent);
+    try expect(body_reader == .NoContent);
 }
 
 test "Frame Body - Response with a 204 No Content status code has no content" {
@@ -87,7 +87,7 @@ test "Frame Body - Response with a 204 No Content status code has no content" {
 
     var body_reader = try BodyReader.frame(.Get, .NoContent, headers);
 
-    expect(body_reader == .NoContent);
+    try expect(body_reader == .NoContent);
 }
 
 test "Frame Body - Response with 304 Not Modified status code has no content" {
@@ -95,7 +95,7 @@ test "Frame Body - Response with 304 Not Modified status code has no content" {
 
     var body_reader = try BodyReader.frame(.Get, .NotModified, headers);
 
-    expect(body_reader == .NoContent);
+    try expect(body_reader == .NoContent);
 }
 
 test "Frame Body - A successful response (2XX) to a CONNECT request has no content" {
@@ -103,7 +103,7 @@ test "Frame Body - A successful response (2XX) to a CONNECT request has no conte
 
     var body_reader = try BodyReader.frame(.Connect, .Ok, headers);
 
-    expect(body_reader == .NoContent);
+    try expect(body_reader == .NoContent);
 }
 
 test "Frame Body - Use a ChunkReader when chunked is the final encoding" {
@@ -113,7 +113,7 @@ test "Frame Body - Use a ChunkReader when chunked is the final encoding" {
 
     var body_reader = try BodyReader.frame(.Get, .Ok, headers);
 
-    expect(body_reader == .Chunked);
+    try expect(body_reader == .Chunked);
 }
 
 test "Frame Body - Fail when chunked is not the final encoding" {
@@ -123,7 +123,7 @@ test "Frame Body - Fail when chunked is not the final encoding" {
 
     const failure = BodyReader.frame(.Get, .Ok, headers);
 
-    expectError(error.UnknownTranfertEncoding, failure);
+    try expectError(error.UnknownTranfertEncoding, failure);
 }
 
 test "Frame Body - By default use a ContentLengthReader with a length of 0" {
@@ -131,8 +131,8 @@ test "Frame Body - By default use a ContentLengthReader with a length of 0" {
 
     var body_reader = try BodyReader.frame(.Get, .Ok, headers);
 
-    expect(body_reader == .ContentLength);
-    expect(body_reader.ContentLength.expected_length == 0);
+    try expect(body_reader == .ContentLength);
+    try expect(body_reader.ContentLength.expected_length == 0);
 }
 
 test "Frame Body - Use a ContentLengthReader with the provided length" {
@@ -142,8 +142,8 @@ test "Frame Body - Use a ContentLengthReader with the provided length" {
 
     var body_reader = try BodyReader.frame(.Get, .Ok, headers);
 
-    expect(body_reader == .ContentLength);
-    expect(body_reader.ContentLength.expected_length == 15);
+    try expect(body_reader == .ContentLength);
+    try expect(body_reader.ContentLength.expected_length == 15);
 }
 
 test "Frame Body - Fail when the provided content length is invalid" {
@@ -153,7 +153,7 @@ test "Frame Body - Fail when the provided content length is invalid" {
 
     const failure = BodyReader.frame(.Get, .Ok, headers);
 
-    expectError(error.RemoteProtocolError, failure);
+    try expectError(error.RemoteProtocolError, failure);
 }
 
 test "NoContentReader - Returns EndOfMessage." {
@@ -165,5 +165,5 @@ test "NoContentReader - Returns EndOfMessage." {
     var buffer: [0]u8 = undefined;
     var event = try body_reader.read(&reader, &buffer);
 
-    expect(event == .EndOfMessage);
+    try expect(event == .EndOfMessage);
 }

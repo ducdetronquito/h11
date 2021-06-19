@@ -30,6 +30,7 @@ pub const ContentLengthReader = struct {
 };
 
 const expect = std.testing.expect;
+const expectEqualStrings = std.testing.expectEqualStrings;
 const expectError = std.testing.expectError;
 
 test "ContentLengthReader - Fail when the body is shorter than expected." {
@@ -40,7 +41,7 @@ test "ContentLengthReader - Fail when the body is shorter than expected." {
     var buffer: [32]u8 = undefined;
     const failure = body_reader.read(reader, &buffer);
 
-    expectError(error.BodyTooshort, failure);
+    try expectError(error.BodyTooshort, failure);
 }
 
 test "ContentLengthReader - Read" {
@@ -51,10 +52,10 @@ test "ContentLengthReader - Read" {
     var buffer: [32]u8 = undefined;
     var event = try body_reader.read(reader, &buffer);
 
-    expect(std.mem.eql(u8, event.Data.bytes, "Gotta go fast!"));
+    try expectEqualStrings(event.Data.bytes, "Gotta go fast!");
 
     event = try body_reader.read(reader, &buffer);
-    expect(event == .EndOfMessage);
+    try expect(event == .EndOfMessage);
 }
 
 test "ContentLengthReader - Read in several call" {
@@ -65,14 +66,14 @@ test "ContentLengthReader - Read in several call" {
 
     var buffer: [32]u8 = undefined;
     var event = try body_reader.read(reader, &buffer);
-    expect(std.mem.eql(u8, event.Data.bytes, "a" ** 32));
+    try expectEqualStrings(event.Data.bytes, "a" ** 32);
 
     event = try body_reader.read(reader, &buffer);
-    expect(std.mem.eql(u8, event.Data.bytes, "b" ** 32));
+    try expectEqualStrings(event.Data.bytes, "b" ** 32);
 
     event = try body_reader.read(reader, &buffer);
-    expect(std.mem.eql(u8, event.Data.bytes, "c" ** 32));
+    try expectEqualStrings(event.Data.bytes, "c" ** 32);
 
     event = try body_reader.read(reader, &buffer);
-    expect(event == .EndOfMessage);
+    try expect(event == .EndOfMessage);
 }

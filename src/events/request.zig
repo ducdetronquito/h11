@@ -112,6 +112,7 @@ pub const Request = struct {
 };
 
 const expect = std.testing.expect;
+const expectEqualStrings = std.testing.expectEqualStrings;
 const expectError = std.testing.expectError;
 
 test "Init - An HTTP/1.1 request must contain a 'Host' header" {
@@ -119,7 +120,7 @@ test "Init - An HTTP/1.1 request must contain a 'Host' header" {
     defer headers.deinit();
 
     var request = Request.init(Method.Get, "/news/", Version.Http11, headers);
-    expectError(error.MissingHost, request);
+    try expectError(error.MissingHost, request);
 }
 
 test "Init - An HTTP/1.0 request may not contain a 'Host' header" {
@@ -136,7 +137,7 @@ test "Init - A request must not contain multiple 'Host' header" {
     defer headers.deinit();
 
     var request = Request.init(Method.Get, "/news/", Version.Http11, headers);
-    expectError(error.TooManyHost, request);
+    try expectError(error.TooManyHost, request);
 }
 
 test "Serialize" {
@@ -150,7 +151,7 @@ test "Serialize" {
     var result = try request.serialize(std.testing.allocator);
     defer std.testing.allocator.free(result);
 
-    expect(std.mem.eql(u8, result, "GET /news/ HTTP/1.1\r\nHost: ziglang.org\r\nGOTTA-GO: FAST!!\r\n\r\n"));
+    try expectEqualStrings(result, "GET /news/ HTTP/1.1\r\nHost: ziglang.org\r\nGOTTA-GO: FAST!!\r\n\r\n");
 }
 
 test "Parse - Success" {
@@ -159,11 +160,11 @@ test "Parse - Success" {
     var request = try Request.parse(std.testing.allocator, content);
     defer request.deinit();
 
-    expect(request.method == .Get);
-    expect(std.mem.eql(u8, request.target, "http://www.example.org/where?q=now"));
-    expect(request.version == .Http11);
+    try expect(request.method == .Get);
+    try expectEqualStrings(request.target, "http://www.example.org/where?q=now");
+    try expect(request.version == .Http11);
 
-    expect(request.headers.len() == 2);
+    try expect(request.headers.len() == 2);
 }
 
 test "Parse - When the request line does not ends with a CRLF - Returns Incomplete" {
@@ -171,7 +172,7 @@ test "Parse - When the request line does not ends with a CRLF - Returns Incomple
 
     const failure = Request.parse(std.testing.allocator, content);
 
-    expectError(error.Incomplete, failure);
+    try expectError(error.Incomplete, failure);
 }
 
 test "Parse - When the method contains an invalid character - Returns Invalid" {
@@ -179,7 +180,7 @@ test "Parse - When the method contains an invalid character - Returns Invalid" {
 
     const failure = Request.parse(std.testing.allocator, content);
 
-    expectError(error.Invalid, failure);
+    try expectError(error.Invalid, failure);
 }
 
 test "Parse - When the method and the target are not separated by a whitespace - Returns Invalid" {
@@ -187,7 +188,7 @@ test "Parse - When the method and the target are not separated by a whitespace -
 
     const failure = Request.parse(std.testing.allocator, content);
 
-    expectError(error.Invalid, failure);
+    try expectError(error.Invalid, failure);
 }
 
 test "Parse - When the target contains an invalid character - Returns Invalid" {
@@ -195,7 +196,7 @@ test "Parse - When the target contains an invalid character - Returns Invalid" {
 
     const failure = Request.parse(std.testing.allocator, content);
 
-    expectError(error.Invalid, failure);
+    try expectError(error.Invalid, failure);
 }
 
 test "Parse - When the target and the http version are not separated by a whitespace - Returns Invalid" {
@@ -203,7 +204,7 @@ test "Parse - When the target and the http version are not separated by a whites
 
     const failure = Request.parse(std.testing.allocator, content);
 
-    expectError(error.Invalid, failure);
+    try expectError(error.Invalid, failure);
 }
 
 test "Parse - When the http version is not HTTP 1.1 - Returns Invalid" {
@@ -211,5 +212,5 @@ test "Parse - When the http version is not HTTP 1.1 - Returns Invalid" {
 
     const failure = Request.parse(std.testing.allocator, content);
 
-    expectError(error.Invalid, failure);
+    try expectError(error.Invalid, failure);
 }

@@ -64,9 +64,9 @@ test "Parse - Success" {
     var response = try Response.parse(std.testing.allocator, buffer);
     defer response.deinit();
 
-    expect(response.statusCode == .Ok);
-    expect(response.version == .Http11);
-    expect(response.headers.len() == 2);
+    try expect(response.statusCode == .Ok);
+    try expect(response.version == .Http11);
+    try expect(response.headers.len() == 2);
 }
 
 test "Parse - Missing reason phrase" {
@@ -75,8 +75,8 @@ test "Parse - Missing reason phrase" {
     var response = try Response.parse(std.testing.allocator, buffer);
     defer response.deinit();
 
-    expect(response.statusCode == .Ok);
-    expect(response.version == .Http11);
+    try expect(response.statusCode == .Ok);
+    try expect(response.version == .Http11);
 }
 
 test "Parse - TooManyHeaders" {
@@ -84,7 +84,7 @@ test "Parse - TooManyHeaders" {
 
     var failure = Response.parse(std.testing.allocator, buffer);
 
-    expectError(error.TooManyHeaders, failure);
+    try expectError(error.TooManyHeaders, failure);
 }
 
 test "Issue #28: Parse - Status code below 100 is invalid" {
@@ -92,7 +92,7 @@ test "Issue #28: Parse - Status code below 100 is invalid" {
 
     var failure = Response.parse(std.testing.allocator, content);
 
-    expectError(error.Invalid, failure);
+    try expectError(error.Invalid, failure);
 }
 
 test "Issue #28: Parse - Status code above 599 is invalid" {
@@ -100,7 +100,7 @@ test "Issue #28: Parse - Status code above 599 is invalid" {
 
     var failure = Response.parse(std.testing.allocator, content);
 
-    expectError(error.Invalid, failure);
+    try expectError(error.Invalid, failure);
 }
 
 test "Parse - Response is invalid if the HTTP version is not HTTP/1.X" {
@@ -108,7 +108,7 @@ test "Parse - Response is invalid if the HTTP version is not HTTP/1.X" {
 
     const failure = Response.parse(std.testing.allocator, content);
 
-    expectError(error.Invalid, failure);
+    try expectError(error.Invalid, failure);
 }
 
 test "Parse - Response is invalid if the status line is less than 12 characters" {
@@ -116,7 +116,7 @@ test "Parse - Response is invalid if the status line is less than 12 characters"
 
     const failure = Response.parse(std.testing.allocator, content);
 
-    expectError(error.Invalid, failure);
+    try expectError(error.Invalid, failure);
 }
 
 test "Parse - When the http version and the status code are not separated by a whitespace - Returns Invalid" {
@@ -124,7 +124,7 @@ test "Parse - When the http version and the status code are not separated by a w
 
     const failure = Response.parse(std.testing.allocator, content);
 
-    expectError(error.Invalid, failure);
+    try expectError(error.Invalid, failure);
 }
 
 test "Parse - When the status code is not an integer - Returns Invalid" {
@@ -132,7 +132,7 @@ test "Parse - When the status code is not an integer - Returns Invalid" {
 
     const failure = Response.parse(std.testing.allocator, content);
 
-    expectError(error.Invalid, failure);
+    try expectError(error.Invalid, failure);
 }
 
 test "Issue #29: Parse - When the status code is more than 3 digits - Returns Invalid" {
@@ -140,5 +140,5 @@ test "Issue #29: Parse - When the status code is more than 3 digits - Returns In
 
     const failure = Response.parse(std.testing.allocator, content);
 
-    expectError(error.Invalid, failure);
+    try expectError(error.Invalid, failure);
 }

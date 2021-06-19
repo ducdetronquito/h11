@@ -97,6 +97,7 @@ pub const ChunkedReader = struct {
 };
 
 const expect = std.testing.expect;
+const expectEqualStrings = std.testing.expectEqualStrings;
 const expectError = std.testing.expectError;
 
 test "ChunkedReader - Read a chunk" {
@@ -106,10 +107,10 @@ test "ChunkedReader - Read a chunk" {
     var body_reader = ChunkedReader{};
     var buffer: [32]u8 = undefined;
     var event = try body_reader.read(&reader, &buffer);
-    expect(std.mem.eql(u8, event.Data.bytes, "Gotta go fast!"));
+    try expectEqualStrings(event.Data.bytes, "Gotta go fast!");
 
     event = try body_reader.read(&reader, &buffer);
-    expect(event == .EndOfMessage);
+    try expect(event == .EndOfMessage);
 }
 
 test "ChunkedReader - Read multiple chunks" {
@@ -119,13 +120,13 @@ test "ChunkedReader - Read multiple chunks" {
     var body_reader = ChunkedReader{};
     var buffer: [14]u8 = undefined;
     var event = try body_reader.read(&reader, &buffer);
-    expect(std.mem.eql(u8, event.Data.bytes, "Gotta go fast!"));
+    try expectEqualStrings(event.Data.bytes, "Gotta go fast!");
 
     event = try body_reader.read(&reader, &buffer);
-    expect(std.mem.eql(u8, event.Data.bytes, "Ziguana"));
+    try expectEqualStrings(event.Data.bytes, "Ziguana");
 
     event = try body_reader.read(&reader, &buffer);
-    expect(event == .EndOfMessage);
+    try expect(event == .EndOfMessage);
 }
 
 test "ChunkedReader - Read a chunk with a smaller buffer" {
@@ -135,13 +136,13 @@ test "ChunkedReader - Read a chunk with a smaller buffer" {
     var body_reader = ChunkedReader{};
     var buffer: [7]u8 = undefined;
     var event = try body_reader.read(&reader, &buffer);
-    expect(std.mem.eql(u8, event.Data.bytes, "Gotta g"));
+    try expectEqualStrings(event.Data.bytes, "Gotta g");
 
     event = try body_reader.read(&reader, &buffer);
-    expect(std.mem.eql(u8, event.Data.bytes, "o fast!"));
+    try expectEqualStrings(event.Data.bytes, "o fast!");
 
     event = try body_reader.read(&reader, &buffer);
-    expect(event == .EndOfMessage);
+    try expect(event == .EndOfMessage);
 }
 
 test "ChunkedReader - Read multiple chunks with a smaller buffer" {
@@ -151,16 +152,16 @@ test "ChunkedReader - Read multiple chunks with a smaller buffer" {
     var body_reader = ChunkedReader{};
     var buffer: [7]u8 = undefined;
     var event = try body_reader.read(&reader, &buffer);
-    expect(std.mem.eql(u8, event.Data.bytes, "Gotta g"));
+    try expectEqualStrings(event.Data.bytes, "Gotta g");
 
     event = try body_reader.read(&reader, &buffer);
-    expect(std.mem.eql(u8, event.Data.bytes, "o fast!"));
+    try expectEqualStrings(event.Data.bytes, "o fast!");
 
     event = try body_reader.read(&reader, &buffer);
-    expect(std.mem.eql(u8, event.Data.bytes, "Ziguana"));
+    try expectEqualStrings(event.Data.bytes, "Ziguana");
 
     event = try body_reader.read(&reader, &buffer);
-    expect(event == .EndOfMessage);
+    try expect(event == .EndOfMessage);
 }
 
 test "ChunkedReader - Read multiple chunks in the same user buffer" {
@@ -171,10 +172,10 @@ test "ChunkedReader - Read multiple chunks in the same user buffer" {
     var buffer: [32]u8 = undefined;
 
     var event = try body_reader.read(&reader, &buffer);
-    expect(std.mem.eql(u8, event.Data.bytes, "Gotta go fast!ZiguanaStonks"));
+    try expectEqualStrings(event.Data.bytes, "Gotta go fast!ZiguanaStonks");
 
     event = try body_reader.read(&reader, &buffer);
-    expect(event == .EndOfMessage);
+    try expect(event == .EndOfMessage);
 }
 
 test "ChunkedReader - When the inner buffer is smaller than the user buffer" {
@@ -192,22 +193,22 @@ test "ChunkedReader - When the inner buffer is smaller than the user buffer" {
     var body_reader = ChunkedReader{};
     var buffer: [200]u8 = undefined;
     var event = try body_reader.read(&reader, &buffer);
-    expect(std.mem.eql(u8, event.Data.bytes, "a" ** 200));
+    try expectEqualStrings(event.Data.bytes, "a" ** 200);
 
     event = try body_reader.read(&reader, &buffer);
-    expect(std.mem.eql(u8, event.Data.bytes, "b" ** 200));
+    try expectEqualStrings(event.Data.bytes, "b" ** 200);
 
     event = try body_reader.read(&reader, &buffer);
-    expect(std.mem.eql(u8, event.Data.bytes, "c" ** 200));
+    try expectEqualStrings(event.Data.bytes, "c" ** 200);
 
     event = try body_reader.read(&reader, &buffer);
-    expect(std.mem.eql(u8, event.Data.bytes, "d" ** 200));
+    try expectEqualStrings(event.Data.bytes, "d" ** 200);
 
     event = try body_reader.read(&reader, &buffer);
-    expect(std.mem.eql(u8, event.Data.bytes, "e" ** 200));
+    try expectEqualStrings(event.Data.bytes, "e" ** 200);
 
     event = try body_reader.read(&reader, &buffer);
-    expect(event == .EndOfMessage);
+    try expect(event == .EndOfMessage);
 }
 
 test "ChunkedReader - Fail to read a chunk size which is not hexadecimal" {
@@ -218,7 +219,7 @@ test "ChunkedReader - Fail to read a chunk size which is not hexadecimal" {
     var buffer: [32]u8 = undefined;
 
     var failure = body_reader.read(&reader, &buffer);
-    expectError(error.RemoteProtocolError, failure);
+    try expectError(error.RemoteProtocolError, failure);
 }
 
 test "ChunkedReader - Fail to read too large chunk" {
@@ -229,7 +230,7 @@ test "ChunkedReader - Fail to read too large chunk" {
     var buffer: [32]u8 = undefined;
 
     var failure = body_reader.read(&reader, &buffer);
-    expectError(error.RemoteProtocolError, failure);
+    try expectError(error.RemoteProtocolError, failure);
 }
 
 test "ChunkedReader - Fail when not enough data can be read" {
@@ -240,5 +241,5 @@ test "ChunkedReader - Fail when not enough data can be read" {
     var buffer: [50]u8 = undefined;
 
     var failure = body_reader.read(&reader, &buffer);
-    expectError(error.EndOfStream, failure);
+    try expectError(error.EndOfStream, failure);
 }

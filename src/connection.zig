@@ -38,6 +38,7 @@ pub fn Client(comptime Reader: type, comptime Writer: type) type {
 }
 
 const expect = std.testing.expect;
+const expectEqualStrings = std.testing.expectEqualStrings;
 const expectError = std.testing.expectError;
 const Request = @import("events/events.zig").Request;
 const TestClient = Client(std.io.FixedBufferStream([]const u8).Reader, std.io.FixedBufferStream([]u8).Writer);
@@ -52,7 +53,7 @@ test "Send - Client can send an event" {
 
     client.localState.state = .SendBody;
     try client.send(.EndOfMessage);
-    expect(std.mem.startsWith(u8, &write_buffer, ""));
+    try expect(std.mem.startsWith(u8, &write_buffer, ""));
 }
 
 test "Send - Remember the request method when sending a request event" {
@@ -66,7 +67,7 @@ test "Send - Remember the request method when sending a request event" {
     var request = Request.default(std.testing.allocator);
     try client.send(Event{ .Request = request });
 
-    expect(client.remoteState.expected_request.?.method == .Get);
+    try expect(client.remoteState.expected_request.?.method == .Get);
 }
 
 test "NextEvent - A Response event with a content length muste be followed by a Data event and an EndOfMessage event." {
@@ -80,24 +81,24 @@ test "NextEvent - A Response event with a content length muste be followed by a 
     try client.send(Event{ .Request = request });
 
     var event = try client.nextEvent(.{});
-    expect(event == .Response);
+    try expect(event == .Response);
     var response = event.Response;
     defer response.deinit();
 
     var buffer: [100]u8 = undefined;
     event = try client.nextEvent(.{ .buffer = &buffer });
-    expect(event == .Data);
+    try expect(event == .Data);
     var data = event.Data;
 
     event = try client.nextEvent(.{ .buffer = &buffer });
-    expect(event == .EndOfMessage);
+    try expect(event == .EndOfMessage);
 
     client.deinit();
 
-    expect(response.statusCode == .Ok);
-    expect(response.version == .Http11);
-    expect(response.headers.len() == 1);
-    expect(std.mem.eql(u8, response.headers.items()[0].name.raw(), "Content-Length"));
-    expect(std.mem.eql(u8, response.headers.items()[0].value, "34"));
-    expect(std.mem.eql(u8, data.bytes, "Ain't no sunshine when she's gone."));
+    try expect(response.statusCode == .Ok);
+    try expect(response.version == .Http11);
+    try expect(response.headers.len() == 1);
+    try expectEqualStrings(response.headers.items()[0].name.raw(), "Content-Length");
+    try expectEqualStrings(response.headers.items()[0].value, "34");
+    try expectEqualStrings(data.bytes, "Ain't no sunshine when she's gone.");
 }

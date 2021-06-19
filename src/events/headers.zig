@@ -39,6 +39,7 @@ pub fn parse(allocator: *Allocator, buffer: []const u8, max_headers: usize) Pars
 }
 
 const expect = std.testing.expect;
+const expectEqualStrings = std.testing.expectEqualStrings;
 const expectError = std.testing.expectError;
 
 test "Parse - Single header - Success" {
@@ -48,8 +49,8 @@ test "Parse - Single header - Success" {
     defer headers.deinit();
 
     const header = headers.items()[0];
-    expect(std.mem.eql(u8, header.name.raw(), "Content-Length"));
-    expect(std.mem.eql(u8, header.value, "10"));
+    try expectEqualStrings(header.name.raw(), "Content-Length");
+    try expectEqualStrings(header.value, "10");
 }
 
 test "Parse - No header - Success" {
@@ -58,7 +59,7 @@ test "Parse - No header - Success" {
     var headers = try parse(std.testing.allocator, content, 1);
     defer headers.deinit();
 
-    expect(headers.len() == 0);
+    try expect(headers.len() == 0);
 }
 
 test "Parse - Multiple headers - Success" {
@@ -68,12 +69,12 @@ test "Parse - Multiple headers - Success" {
     defer headers.deinit();
 
     const content_length = headers.items()[0];
-    expect(std.mem.eql(u8, content_length.name.raw(), "Content-Length"));
-    expect(std.mem.eql(u8, content_length.value, "10"));
+    try expectEqualStrings(content_length.name.raw(), "Content-Length");
+    try expectEqualStrings(content_length.value, "10");
 
     const server = headers.items()[1];
-    expect(std.mem.eql(u8, server.name.raw(), "Server"));
-    expect(std.mem.eql(u8, server.value, "Apache"));
+    try expectEqualStrings(server.name.raw(), "Server");
+    try expectEqualStrings(server.value, "Apache");
 }
 
 test "Parse - Ignore a missing whitespace between the semicolon and the header value - Success" {
@@ -83,8 +84,8 @@ test "Parse - Ignore a missing whitespace between the semicolon and the header v
     defer headers.deinit();
 
     const header = headers.items()[0];
-    expect(std.mem.eql(u8, header.name.raw(), "Content-Length"));
-    expect(std.mem.eql(u8, header.value, "10"));
+    try expectEqualStrings(header.name.raw(), "Content-Length");
+    try expectEqualStrings(header.value, "10");
 }
 
 test "Parse - When the last CRLF after the headers is missing - Returns Invalid" {
@@ -92,7 +93,7 @@ test "Parse - When the last CRLF after the headers is missing - Returns Invalid"
 
     const fail = parse(std.testing.allocator, content, 1);
 
-    expectError(error.Invalid, fail);
+    try expectError(error.Invalid, fail);
 }
 
 test "Parse - When a header's name does not end with a semicolon - Returns Invalid" {
@@ -100,7 +101,7 @@ test "Parse - When a header's name does not end with a semicolon - Returns Inval
 
     const fail = parse(std.testing.allocator, content, 1);
 
-    expectError(error.Invalid, fail);
+    try expectError(error.Invalid, fail);
 }
 
 test "Parse - When a header's value does not exist - Returns Invalid" {
@@ -108,7 +109,7 @@ test "Parse - When a header's value does not exist - Returns Invalid" {
 
     const fail = parse(std.testing.allocator, content, 1);
 
-    expectError(error.Invalid, fail);
+    try expectError(error.Invalid, fail);
 }
 
 test "Parse - When parsing more headers than expected - Returns TooManyHeaders" {
@@ -116,7 +117,7 @@ test "Parse - When parsing more headers than expected - Returns TooManyHeaders" 
 
     const fail = parse(std.testing.allocator, content, 1);
 
-    expectError(error.TooManyHeaders, fail);
+    try expectError(error.TooManyHeaders, fail);
 }
 
 test "Parse - Invalid character in the header's name - Returns InvalidHeaderName" {
@@ -124,7 +125,7 @@ test "Parse - Invalid character in the header's name - Returns InvalidHeaderName
 
     const fail = parse(std.testing.allocator, content, 1);
 
-    expectError(error.InvalidHeaderName, fail);
+    try expectError(error.InvalidHeaderName, fail);
 }
 
 test "Parse - Invalid character in the header's value - Returns InvalidHeaderValue" {
@@ -132,5 +133,5 @@ test "Parse - Invalid character in the header's value - Returns InvalidHeaderVal
 
     const fail = parse(std.testing.allocator, content, 1);
 
-    expectError(error.InvalidHeaderValue, fail);
+    try expectError(error.InvalidHeaderValue, fail);
 }

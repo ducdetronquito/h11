@@ -88,8 +88,8 @@ test "Send - Can send a Request event when state is Idle" {
     try client.send(Event{ .Request = requestEvent });
 
     var expected = "GET / HTTP/1.1\r\nHost: www.ziglang.org\r\nGOTTA-GO: FAST!\r\n\r\n";
-    expect(std.mem.startsWith(u8, &buffer, expected));
-    expect(client.state == .SendBody);
+    try expect(std.mem.startsWith(u8, &buffer, expected));
+    try expect(client.state == .SendBody);
 }
 
 test "Send - Cannot send any other event when state is Idle" {
@@ -99,8 +99,8 @@ test "Send - Cannot send any other event when state is Idle" {
 
     const failure = client.send(.EndOfMessage);
 
-    expect(client.state == .Error);
-    expectError(error.LocalProtocolError, failure);
+    try expect(client.state == .Error);
+    try expectError(error.LocalProtocolError, failure);
 }
 
 test "Send - Can send a Data event when state is SendBody" {
@@ -113,8 +113,8 @@ test "Send - Can send a Data event when state is SendBody" {
 
     try client.send(data);
 
-    expect(client.state == .SendBody);
-    expect(std.mem.startsWith(u8, &buffer, "It's raining outside, damned Brittany !"));
+    try expect(client.state == .SendBody);
+    try expect(std.mem.startsWith(u8, &buffer, "It's raining outside, damned Brittany !"));
 }
 
 test "Send - Can send a EndOfMessage event when state is SendBody" {
@@ -125,7 +125,7 @@ test "Send - Can send a EndOfMessage event when state is SendBody" {
 
     var result = try client.send(.EndOfMessage);
 
-    expect(client.state == .Done);
+    try expect(client.state == .Done);
 }
 
 test "Send - Cannot send any other event when state is SendBody" {
@@ -136,8 +136,8 @@ test "Send - Cannot send any other event when state is SendBody" {
 
     const failure = client.send(.ConnectionClosed);
 
-    expect(client.state == .Error);
-    expectError(error.LocalProtocolError, failure);
+    try expect(client.state == .Error);
+    try expectError(error.LocalProtocolError, failure);
 }
 
 test "Send - Can send a ConnectionClosed event when state is Done" {
@@ -148,7 +148,7 @@ test "Send - Can send a ConnectionClosed event when state is Done" {
 
     var result = try client.send(.ConnectionClosed);
 
-    expect(client.state == .Closed);
+    try expect(client.state == .Closed);
 }
 
 test "Send - Cannot send any other event when state is Done" {
@@ -159,8 +159,8 @@ test "Send - Cannot send any other event when state is Done" {
 
     const failure = client.send(.EndOfMessage);
 
-    expect(client.state == .Error);
-    expectError(error.LocalProtocolError, failure);
+    try expect(client.state == .Error);
+    try expectError(error.LocalProtocolError, failure);
 }
 
 test "Send - Can send a ConnectionClosed event when state is Closed" {
@@ -171,7 +171,7 @@ test "Send - Can send a ConnectionClosed event when state is Closed" {
 
     var result = try client.send(.ConnectionClosed);
 
-    expect(client.state == .Closed);
+    try expect(client.state == .Closed);
 }
 
 test "Send - Cannot send any other event when state is Closed" {
@@ -182,8 +182,8 @@ test "Send - Cannot send any other event when state is Closed" {
 
     const failure = client.send(.EndOfMessage);
 
-    expect(client.state == .Error);
-    expectError(error.LocalProtocolError, failure);
+    try expect(client.state == .Error);
+    try expectError(error.LocalProtocolError, failure);
 }
 
 test "Send - Cannot send any event when state is Error" {
@@ -194,6 +194,6 @@ test "Send - Cannot send any event when state is Error" {
 
     const failure = client.send(.EndOfMessage);
 
-    expect(client.state == .Error);
-    expectError(error.LocalProtocolError, failure);
+    try expect(client.state == .Error);
+    try expectError(error.LocalProtocolError, failure);
 }
