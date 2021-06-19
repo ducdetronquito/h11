@@ -13,7 +13,7 @@ pub const BodyReaderType = enum {
 };
 
 pub const BodyReader = union(BodyReaderType) {
-    Chunked: ChunkedReader(8192),
+    Chunked: ChunkedReader,
     ContentLength: ContentLengthReader,
     NoContent: void,
 
@@ -49,7 +49,7 @@ pub const BodyReader = union(BodyReaderType) {
             if (!std.mem.endsWith(u8, transfert_encoding.?.value, "chunked")) {
                 return error.UnknownTranfertEncoding;
             }
-            return BodyReader{.Chunked = ChunkedReader(8192){} };
+            return BodyReader{.Chunked = ChunkedReader{} };
         }
 
         var contentLength: usize = 0;
@@ -158,11 +158,12 @@ test "Frame Body - Fail when the provided content length is invalid" {
 
 test "NoContentReader - Returns EndOfMessage." {
     const content = "";
-    var reader = std.io.fixedBufferStream(content).reader();
+    var base_reader = std.io.fixedBufferStream(content).reader();
+    var reader = std.io.peekStream(1024, base_reader);
     var body_reader = BodyReader{ .NoContent = undefined };
 
     var buffer: [0]u8 = undefined;
-    var event = try body_reader.read(reader, &buffer);
+    var event = try body_reader.read(&reader, &buffer);
 
     expect(event == .EndOfMessage);
 }
