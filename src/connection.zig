@@ -15,7 +15,7 @@ pub fn Client(comptime Reader: type, comptime Writer: type) type {
             var localState = ClientSM(Writer).init(allocator, writer);
             var remoteState = ServerSM(Reader).init(allocator, reader);
 
-            return Self {
+            return Self{
                 .localState = localState,
                 .remoteState = remoteState,
             };
@@ -26,7 +26,7 @@ pub fn Client(comptime Reader: type, comptime Writer: type) type {
             self.remoteState.deinit();
         }
 
-        pub fn send(self: *Self, event: Event) !void{
+        pub fn send(self: *Self, event: Event) !void {
             try self.localState.send(event);
             self.remoteState.expectEvent(event);
         }

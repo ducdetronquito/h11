@@ -19,8 +19,8 @@ pub const ChunkedReader = struct {
     };
 
     pub fn read(self: *Self, reader: anytype, buffer: []u8) !Event {
-        while(true) {
-            var event = try switch(self.state) {
+        while (true) {
+            var event = try switch (self.state) {
                 .ReadChunkSize => self.readChunkSize(reader, buffer),
                 .ReadChunk => self.readChunk(reader, buffer),
                 .ReadChunkEnd => self.readChunkEnd(reader),
@@ -36,8 +36,8 @@ pub const ChunkedReader = struct {
         var line: [MaxChunkSizeLength]u8 = undefined;
         _ = try reader.read(&line);
         const line_end = std.mem.indexOfPosLinear(u8, &line, 0, "\r\n") orelse return error.RemoteProtocolError;
-        try reader.putBack(line[line_end + 2..]);
-        self.chunk_size = try parseChunkSize(line[0.. line_end]);
+        try reader.putBack(line[line_end + 2 ..]);
+        self.chunk_size = try parseChunkSize(line[0..line_end]);
 
         if (self.chunk_size > 0) {
             self.state = .ReadChunk;
@@ -48,13 +48,13 @@ pub const ChunkedReader = struct {
         if (self.bytes_read == 0) {
             return null;
         }
-        return Event{ .Data = Data{ .bytes = buffer[0 .. self.bytes_read] } };
+        return Event{ .Data = Data{ .bytes = buffer[0..self.bytes_read] } };
     }
 
     fn readChunk(self: *Self, reader: anytype, buffer: []u8) !?Event {
         const remaining_space_left = buffer.len - self.bytes_read;
         const bytes_to_read = std.math.min(self.chunk_size, remaining_space_left);
-        const count = try reader.read(buffer[self.bytes_read..self.bytes_read + bytes_to_read]);
+        const count = try reader.read(buffer[self.bytes_read .. self.bytes_read + bytes_to_read]);
         if (count == 0) {
             return error.EndOfStream;
         }
@@ -67,7 +67,7 @@ pub const ChunkedReader = struct {
         }
 
         if (self.bytes_read < buffer.len) {
-                return null;
+            return null;
         }
 
         self.bytes_read = 0;
@@ -179,15 +179,7 @@ test "ChunkedReader - Read multiple chunks in the same user buffer" {
 }
 
 test "ChunkedReader - When the inner buffer is smaller than the user buffer" {
-    const content = (
-        "3E8\r\n"
-        ++ "a" ** 200
-        ++ "b" ** 200
-        ++ "c" ** 200
-        ++ "d" ** 200
-        ++ "e" ** 200
-        ++ "\r\n0\r\n\r\n"
-    );
+    const content = ("3E8\r\n" ++ "a" ** 200 ++ "b" ** 200 ++ "c" ** 200 ++ "d" ** 200 ++ "e" ** 200 ++ "\r\n0\r\n\r\n");
     var reader = std.io.peekStream(1024, std.io.fixedBufferStream(content).reader());
 
     var body_reader = ChunkedReader{};
