@@ -18,7 +18,7 @@ pub fn ClientSM(comptime Writer: type) type {
         const Error = SMError || Writer.Error;
 
         pub fn init(allocator: *Allocator, writer: Writer) Self {
-            return .{ .allocator = allocator, .state = State.Idle, .writer = writer};
+            return .{ .allocator = allocator, .state = State.Idle, .writer = writer };
         }
 
         pub fn deinit(self: *Self) void {
@@ -30,7 +30,7 @@ pub fn ClientSM(comptime Writer: type) type {
                 .Idle => try self.sendRequest(event),
                 .SendBody => try self.sendData(event),
                 .Done, .Closed => try self.closeConnection(event),
-                else => try self.triggerLocalProtocolError()
+                else => try self.triggerLocalProtocolError(),
             }
         }
 
@@ -109,7 +109,7 @@ test "Send - Can send a Data event when state is SendBody" {
     var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
 
     client.state = .SendBody;
-    var data = Event { .Data = Data { .bytes = "It's raining outside, damned Brittany !" } };
+    var data = Event{ .Data = Data{ .bytes = "It's raining outside, damned Brittany !" } };
 
     try client.send(data);
 

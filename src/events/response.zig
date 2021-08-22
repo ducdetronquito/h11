@@ -80,7 +80,7 @@ test "Parse - Missing reason phrase" {
 }
 
 test "Parse - TooManyHeaders" {
-    const buffer = "HTTP/1.1 200\r\n" ++ "Cookie: aaa\r\n" ** 129 ++ "\r\n"; 
+    const buffer = "HTTP/1.1 200\r\n" ++ "Cookie: aaa\r\n" ** 129 ++ "\r\n";
 
     var failure = Response.parse(std.testing.allocator, buffer);
 

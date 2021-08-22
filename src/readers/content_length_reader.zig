@@ -37,7 +37,7 @@ test "ContentLengthReader - Fail when the body is shorter than expected." {
     const content = "";
     var reader = std.io.fixedBufferStream(content).reader();
 
-    var body_reader = ContentLengthReader{.expected_length = 14 };
+    var body_reader = ContentLengthReader{ .expected_length = 14 };
     var buffer: [32]u8 = undefined;
     const failure = body_reader.read(reader, &buffer);
 
@@ -48,7 +48,7 @@ test "ContentLengthReader - Read" {
     const content = "Gotta go fast!";
     var reader = std.io.fixedBufferStream(content).reader();
 
-    var body_reader = ContentLengthReader{.expected_length = 14 };
+    var body_reader = ContentLengthReader{ .expected_length = 14 };
     var buffer: [32]u8 = undefined;
     var event = try body_reader.read(reader, &buffer);
 
@@ -62,7 +62,7 @@ test "ContentLengthReader - Read in several call" {
     const content = "a" ** 32 ++ "b" ** 32 ++ "c" ** 32;
     var reader = std.io.fixedBufferStream(content).reader();
 
-    var body_reader = ContentLengthReader{.expected_length = 96 };
+    var body_reader = ContentLengthReader{ .expected_length = 96 };
 
     var buffer: [32]u8 = undefined;
     var event = try body_reader.read(reader, &buffer);

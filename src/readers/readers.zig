@@ -49,7 +49,7 @@ pub const BodyReader = union(BodyReaderType) {
             if (!std.mem.endsWith(u8, transfert_encoding.?.value, "chunked")) {
                 return error.UnknownTranfertEncoding;
             }
-            return BodyReader{.Chunked = ChunkedReader{} };
+            return BodyReader{ .Chunked = ChunkedReader{} };
         }
 
         var contentLength: usize = 0;
@@ -59,7 +59,7 @@ pub const BodyReader = union(BodyReaderType) {
             contentLength = std.fmt.parseInt(usize, contentLengthHeader.?.value, 10) catch return error.RemoteProtocolError;
         }
 
-        return BodyReader{.ContentLength = ContentLengthReader{.expected_length = contentLength}};
+        return BodyReader{ .ContentLength = ContentLengthReader{ .expected_length = contentLength } };
     }
 };
 

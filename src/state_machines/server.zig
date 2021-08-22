@@ -26,13 +26,7 @@ pub fn ServerSM(comptime Reader: type) type {
         reader: std.io.PeekStream(.{ .Static = ReaderLookahead }, Reader),
 
         pub fn init(allocator: *Allocator, reader: Reader) Self {
-            return .{
-                .allocator = allocator,
-                .body_reader = null,
-                .expected_request = null,
-                .state = State.Idle,
-                .reader = std.io.peekStream(ReaderLookahead, reader)
-            };
+            return .{ .allocator = allocator, .body_reader = null, .expected_request = null, .state = State.Idle, .reader = std.io.peekStream(ReaderLookahead, reader) };
         }
 
         pub fn deinit(self: *Self) void {
@@ -115,7 +109,7 @@ pub fn ServerSM(comptime Reader: type) type {
                 const response = buffer[0 .. index.? + 4];
                 try response_buffer.appendSlice(response);
                 if (response.len < count) {
-                    try self.reader.putBack(buffer[response.len .. count]);
+                    try self.reader.putBack(buffer[response.len..count]);
                 }
                 return response_buffer.toOwnedSlice();
             }
@@ -136,14 +130,14 @@ pub fn ServerSM(comptime Reader: type) type {
                 index = std.mem.indexOf(u8, &buffer, "\r\n\r\n");
                 if (index != null) {
                     const response_end = index.? + 4;
-                    try response_buffer.appendSlice(buffer[3 .. response_end]);
+                    try response_buffer.appendSlice(buffer[3..response_end]);
 
-                    var body = buffer[response_end .. count];
+                    var body = buffer[response_end..count];
                     try self.reader.putBack(body);
                     break;
                 }
 
-                try response_buffer.appendSlice(buffer[3 .. count]);
+                try response_buffer.appendSlice(buffer[3..count]);
                 try self.reader.putBack(buffer[count - 3 .. count]);
             }
 
@@ -202,7 +196,7 @@ test "NextEvent - Can retrieve a Response and Data when state is Idle" {
     try expectEqualStrings(buffer[0..14], "Gotta go fast!");
     try expect(server.state == .SendBody);
 
-    event = try server.nextEvent(.{ .buffer = &buffer});
+    event = try server.nextEvent(.{ .buffer = &buffer });
     try expect(event == .EndOfMessage);
     try expect(server.state == .Done);
 }
@@ -225,8 +219,8 @@ test "NextEvent - When the response size is above the limit - Returns ResponseTo
 test "NextEvent - When fail to read from the reader - Returns reader' error" {
     const FailingReader = struct {
         const Self = @This();
-        const ReadError = error { Failed };
-        const Reader = std.io.Reader(*Self, ReadError, read);   
+        const ReadError = error{Failed};
+        const Reader = std.io.Reader(*Self, ReadError, read);
 
         fn reader(self: *Self) Reader {
             return .{ .context = self };
