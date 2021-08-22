@@ -123,7 +123,7 @@ test "Send - Can send a EndOfMessage event when state is SendBody" {
     var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
     client.state = .SendBody;
 
-    var result = try client.send(.EndOfMessage);
+    _ = try client.send(.EndOfMessage);
 
     try expect(client.state == .Done);
 }
@@ -146,7 +146,7 @@ test "Send - Can send a ConnectionClosed event when state is Done" {
     var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
     client.state = .Done;
 
-    var result = try client.send(.ConnectionClosed);
+    _ = try client.send(.ConnectionClosed);
 
     try expect(client.state == .Closed);
 }
@@ -169,7 +169,7 @@ test "Send - Can send a ConnectionClosed event when state is Closed" {
     var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
     client.state = .Closed;
 
-    var result = try client.send(.ConnectionClosed);
+    _ = try client.send(.ConnectionClosed);
 
     try expect(client.state == .Closed);
 }

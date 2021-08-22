@@ -10,7 +10,6 @@ const SMError = @import("errors.zig").SMError;
 const State = @import("states.zig").State;
 const StatusCode = @import("http").StatusCode;
 const std = @import("std");
-const utils = @import("utils.zig");
 const Version = @import("http").Version;
 
 const MaximumResponseSize = 64_000;
@@ -233,7 +232,8 @@ test "NextEvent - When fail to read from the reader - Returns reader' error" {
             return .{ .context = self };
         }
 
-        pub fn read(self: *Self, buffer: []u8) ReadError!usize {
+        pub fn read(self: *Self, _: []u8) ReadError!usize {
+            _ = self;
             return error.Failed;
         }
     };
