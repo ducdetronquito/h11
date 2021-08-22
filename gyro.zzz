@@ -1,0 +1,13 @@
+pkgs:
+  h11:
+    version: 0.1.0
+    root: src/main.zig
+    description: I/O free HTTP/1.1 implementation for Zig 🦎
+    license: 0BSD
+    source_url: "https://github.com/ducdetronquito/h11"
+    tags:
+      http
+      parser
+      io-free
+deps:
+  ducdetronquito/http: ^0.1.0
