@@ -127,7 +127,7 @@ test "Init - An HTTP/1.0 request may not contain a 'Host' header" {
     var headers = Headers.init(std.testing.allocator);
     defer headers.deinit();
 
-    var request = try Request.init(Method.Get, "/news/", Version.Http10, headers);
+    _ = try Request.init(Method.Get, "/news/", Version.Http10, headers);
 }
 
 test "Init - A request must not contain multiple 'Host' header" {

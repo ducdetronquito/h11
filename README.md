@@ -1,6 +1,6 @@
 # h11
 
-[![Build Status](https://api.travis-ci.org/ducdetronquito/h11.svg?branch=master)](https://travis-ci.org/ducdetronquito/h11) [![License](https://img.shields.io/badge/License-BSD%200--Clause-ff69b4.svg)](https://github.com/ducdetronquito/h11#license) [![Requirements](https://img.shields.io/badge/zig-0.8.0-orange)](https://ziglang.org/)
+[![Build Status](https://api.travis-ci.org/ducdetronquito/h11.svg?branch=master)](https://travis-ci.org/ducdetronquito/h11) [![License](https://img.shields.io/badge/License-BSD%200--Clause-ff69b4.svg)](https://github.com/ducdetronquito/h11#license) [![Requirements](https://img.shields.io/badge/zig-master_(19.08.2021)-orange)](https://ziglang.org/)
 
 I/O free state machine implementation of the HTTP/1.1 protocol.
 
@@ -17,10 +17,6 @@ gyro add ducdetronquito/h11
 ## Usage
 
 First steps of a proper documentation will land before the end of the year: stay tuned 🎵
-
-## Requirements
-
-To work with *h11* you will need the latest stable version of Zig, which is currently Zig 0.8.0.
 
 ## Dependencies
 

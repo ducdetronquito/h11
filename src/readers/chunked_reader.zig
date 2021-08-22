@@ -23,7 +23,7 @@ pub const ChunkedReader = struct {
             var event = try switch(self.state) {
                 .ReadChunkSize => self.readChunkSize(reader, buffer),
                 .ReadChunk => self.readChunk(reader, buffer),
-                .ReadChunkEnd => self.readChunkEnd(reader, buffer),
+                .ReadChunkEnd => self.readChunkEnd(reader),
                 .Done => return .EndOfMessage,
             };
             if (event != null) {
@@ -34,7 +34,7 @@ pub const ChunkedReader = struct {
 
     fn readChunkSize(self: *Self, reader: anytype, buffer: []u8) !?Event {
         var line: [MaxChunkSizeLength]u8 = undefined;
-        const count = try reader.read(&line);
+        _ = try reader.read(&line);
         const line_end = std.mem.indexOfPosLinear(u8, &line, 0, "\r\n") orelse return error.RemoteProtocolError;
         try reader.putBack(line[line_end + 2..]);
         self.chunk_size = try parseChunkSize(line[0.. line_end]);
@@ -74,9 +74,9 @@ pub const ChunkedReader = struct {
         return Event{ .Data = Data{ .bytes = buffer } };
     }
 
-    fn readChunkEnd(self: *Self, reader: anytype, buffer: []u8) !?Event {
+    fn readChunkEnd(self: *Self, reader: anytype) !?Event {
         var chunk_end: [2]u8 = undefined;
-        const count = try reader.read(&chunk_end);
+        _ = try reader.read(&chunk_end);
 
         if (!std.mem.eql(u8, &chunk_end, "\r\n")) {
             return error.RemoteProtocolError;
