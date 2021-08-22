@@ -6,6 +6,14 @@ I/O free state machine implementation of the HTTP/1.1 protocol.
 
 Inspired by the amazing work of [python-hyper](https://github.com/python-hyper/h11).
 
+## Installation
+
+*h11* is available on [astrolabe.pm](https://astrolabe.pm/) via [gyro](https://github.com/mattnite/gyro)
+
+```
+gyro add ducdetronquito/h11
+```
+
 ## Usage
 
 First steps of a proper documentation will land before the end of the year: stay tuned 🎵
