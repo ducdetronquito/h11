@@ -9,5 +9,13 @@ pkgs:
       http
       parser
       io-free
+    files:
+      README.md
+      LICENSE.txt
+      src/*.zig
+      src/events/*.zig
+      src/readers/*.zig
+      src/state_machines/*.zig
+
 deps:
   ducdetronquito/http: ^0.1.0
