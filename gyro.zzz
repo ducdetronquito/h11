@@ -18,4 +18,4 @@ pkgs:
       src/state_machines/*.zig
 
 deps:
-  ducdetronquito/http: ^0.1.0
+  ducdetronquito/http: ^0.1.3
