@@ -1,6 +1,6 @@
 pkgs:
   h11:
-    version: 0.1.0
+    version: 0.1.1
     root: src/main.zig
     description: I/O free HTTP/1.1 implementation for Zig 🦎
     license: 0BSD
