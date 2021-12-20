@@ -3,7 +3,7 @@ const Headers = @import("http").Headers;
 const ParsingError = @import("errors.zig").ParsingError;
 const std = @import("std");
 
-pub fn parse(allocator: *Allocator, buffer: []const u8, max_headers: usize) ParsingError!Headers {
+pub fn parse(allocator: Allocator, buffer: []const u8, max_headers: usize) ParsingError!Headers {
     var remaining_bytes = buffer[0..];
     var headers = Headers.init(allocator);
     errdefer headers.deinit();

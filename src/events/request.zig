@@ -41,7 +41,7 @@ pub const Request = struct {
         };
     }
 
-    pub fn default(allocator: *Allocator) Request {
+    pub fn default(allocator: Allocator) Request {
         return Request{
             .method = .Get,
             .target = "/",
@@ -54,7 +54,7 @@ pub const Request = struct {
         self.headers.deinit();
     }
 
-    pub fn parse(allocator: *Allocator, buffer: []const u8) ParsingError!Request {
+    pub fn parse(allocator: Allocator, buffer: []const u8) ParsingError!Request {
         var line_end = std.mem.indexOfPosLinear(u8, buffer, 0, "\r\n") orelse return error.Incomplete;
         var requestLine = buffer[0..line_end];
         var cursor: usize = 0;
@@ -87,7 +87,7 @@ pub const Request = struct {
         };
     }
 
-    pub fn serialize(self: Request, allocator: *Allocator) ![]const u8 {
+    pub fn serialize(self: Request, allocator: Allocator) ![]const u8 {
         var buffer = std.ArrayList(u8).init(allocator);
 
         // Serialize the request line

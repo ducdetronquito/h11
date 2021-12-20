@@ -12,12 +12,12 @@ const Version = @import("http").Version;
 pub fn ClientSM(comptime Writer: type) type {
     return struct {
         const Self = @This();
-        allocator: *Allocator,
+        allocator: Allocator,
         state: State,
         writer: Writer,
         const Error = SMError || Writer.Error;
 
-        pub fn init(allocator: *Allocator, writer: Writer) Self {
+        pub fn init(allocator: Allocator, writer: Writer) Self {
             return .{ .allocator = allocator, .state = State.Idle, .writer = writer };
         }
 

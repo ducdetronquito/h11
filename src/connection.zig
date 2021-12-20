@@ -11,7 +11,7 @@ pub fn Client(comptime Reader: type, comptime Writer: type) type {
         localState: ClientSM(Writer),
         remoteState: ServerSM(Reader),
 
-        pub fn init(allocator: *Allocator, reader: Reader, writer: Writer) Self {
+        pub fn init(allocator: Allocator, reader: Reader, writer: Writer) Self {
             var localState = ClientSM(Writer).init(allocator, writer);
             var remoteState = ServerSM(Reader).init(allocator, reader);
 

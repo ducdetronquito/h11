@@ -7,7 +7,7 @@ const std = @import("std");
 const Version = @import("http").Version;
 
 pub const Response = struct {
-    allocator: *Allocator,
+    allocator: Allocator,
     headers: Headers,
     statusCode: StatusCode,
     version: Version,
@@ -19,7 +19,7 @@ pub const Response = struct {
         self.allocator.free(self.raw_bytes);
     }
 
-    pub fn parse(allocator: *Allocator, buffer: []const u8) !Response {
+    pub fn parse(allocator: Allocator, buffer: []const u8) !Response {
         const line_end = std.mem.indexOf(u8, buffer, "\r\n") orelse return error.Invalid;
         const status_line = buffer[0..line_end];
         if (status_line.len < 12) {

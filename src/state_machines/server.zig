@@ -19,13 +19,13 @@ pub fn ServerSM(comptime Reader: type) type {
     return struct {
         const Self = @This();
 
-        allocator: *Allocator,
+        allocator: Allocator,
         body_reader: ?BodyReader,
         expected_request: ?Request,
         state: State,
         reader: std.io.PeekStream(.{ .Static = ReaderLookahead }, Reader),
 
-        pub fn init(allocator: *Allocator, reader: Reader) Self {
+        pub fn init(allocator: Allocator, reader: Reader) Self {
             return .{ .allocator = allocator, .body_reader = null, .expected_request = null, .state = State.Idle, .reader = std.io.peekStream(ReaderLookahead, reader) };
         }
 
