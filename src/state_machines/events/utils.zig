@@ -1,5 +1,3 @@
-const ParsingError = @import("errors.zig").ParsingError;
-
 // ASCII codes accepted for an URI
 // Cf: Borrowed from Seamonstar's httparse library.
 // https://github.com/seanmonstar/httparse/blob/01e68542605d8a24a707536561c27a336d4090dc/src/lib.rs#L63
@@ -35,7 +33,7 @@ fn is_uri_token(char: u8) bool {
     return URI_MAP[char];
 }
 
-pub fn readUri(buffer: []const u8) ParsingError![]const u8 {
+pub fn readUri(buffer: []const u8) ![]const u8 {
     for (buffer) |char, i| {
         if (char == ' ') {
             return buffer[0..i];

@@ -1,70 +1,108 @@
-const Allocator = std.mem.Allocator;
-const Data = @import("../events/events.zig").Data;
-const Event = @import("../events/events.zig").Event;
-const Headers = @import("http").Headers;
+const Data = @import("events/main.zig").Data;
+const Event = @import("events/main.zig").Event;
+const FramingContext = @import("body_writer.zig").FramingContext;
+const BodyWriter = @import("body_writer.zig").BodyWriter;
+const Header = @import("http").Header;
 const Method = @import("http").Method;
-const Request = @import("../events/events.zig").Request;
+const Request = @import("events/main.zig").Request;
 const State = @import("states.zig").State;
 const std = @import("std");
-const SMError = @import("errors.zig").SMError;
 const Version = @import("http").Version;
 
 pub fn ClientSM(comptime Writer: type) type {
     return struct {
         const Self = @This();
-        allocator: Allocator,
-        state: State,
+        body_writer: BodyWriter = undefined,
+        state: State = .Idle,
         writer: Writer,
-        const Error = SMError || Writer.Error;
+        request_info: struct {
+            framing_context: FramingContext,
+            host_header_count: usize,
+            version: Version,
+        } = .{ .framing_context = FramingContext{}, .host_header_count = 0, .version = .Http11 },
 
-        pub fn init(allocator: Allocator, writer: Writer) Self {
-            return .{ .allocator = allocator, .state = State.Idle, .writer = writer };
+        const Error = error{ LocalProtocolError, MissingHostHeader, TooManyHostHeaders } || FramingContext.Error || Writer.Error || BodyWriter.Error;
+
+        pub fn init(writer: Writer) Self {
+            return .{ .writer = writer };
         }
 
         pub fn deinit(self: *Self) void {
+            self.body_writer = undefined;
+            self.request_info = .{
+                .framing_context = FramingContext{},
+                .host_header_count = 0,
+                .version = .Http11,
+            };
             self.state = State.Idle;
         }
 
-        pub fn send(self: *Self, event: Event) Error!void {
-            switch (self.state) {
-                .Idle => try self.sendRequest(event),
-                .SendBody => try self.sendData(event),
-                .Done, .Closed => try self.closeConnection(event),
-                else => try self.triggerLocalProtocolError(),
-            }
+        pub inline fn write(self: *Self, event: Event) Error!void {
+            return switch (self.state) {
+                .Idle => self.writeRequest(event),
+                .SendHeader => self.writeHeader(event),
+                .SendBody => self.writeData(event),
+                else => return error.LocalProtocolError,
+            } catch |err| {
+                self.state = .Error;
+                return err;
+            };
         }
 
-        fn sendRequest(self: *Self, event: Event) Error!void {
+        inline fn writeRequest(self: *Self, event: Event) Error!void {
             switch (event) {
                 .Request => |request| {
-                    var result = try request.serialize(self.allocator);
-                    defer self.allocator.free(result);
-
-                    _ = try self.writer.write(result);
-                    self.state = .SendBody;
+                    try request.write(self.writer);
+                    self.request_info.framing_context.method = request.method;
+                    self.request_info.version = request.version;
+                    self.state = .SendHeader;
                 },
-                else => try self.triggerLocalProtocolError(),
+                else => return error.LocalProtocolError,
             }
         }
 
-        fn sendData(self: *Self, event: Event) Error!void {
+        inline fn writeHeader(self: *Self, event: Event) Error!void {
             switch (event) {
-                .Data => |data| _ = try self.writer.write(data.bytes),
-                .EndOfMessage => self.state = .Done,
-                else => try self.triggerLocalProtocolError(),
+                .Header => |header| {
+                    try self.request_info.framing_context.analyze(header);
+                    if (header.name.type == .Host) {
+                        self.request_info.host_header_count += 1;
+                    }
+                    if (self.request_info.host_header_count > 1) {
+                        return error.TooManyHostHeaders;
+                    }
+                    _ = try self.writer.write(header.name.as_http1());
+                    _ = try self.writer.write(": ");
+                    _ = try self.writer.write(header.value);
+                    _ = try self.writer.write("\r\n");
+                },
+                .EndOfHeader => {
+                    // A single 'Host' header is mandatory for HTTP/1.1
+                    // Cf: https://tools.ietf.org/html/rfc7230#section-5.4
+                    if (self.request_info.version == .Http11 and self.request_info.host_header_count == 0) {
+                        return error.MissingHostHeader;
+                    }
+                    _ = try self.writer.write("\r\n");
+                    self.body_writer = try BodyWriter.frame(self.request_info.framing_context);
+                    switch (self.body_writer) {
+                        .NoContent => self.state = .Done,
+                        else => self.state = .SendBody,
+                    }
+                },
+                else => return error.LocalProtocolError,
             }
         }
 
-        fn closeConnection(self: *Self, event: Event) SMError!void {
+        fn writeData(self: *Self, event: Event) Error!void {
             switch (event) {
-                .ConnectionClosed => self.state = .Closed,
-                else => try self.triggerLocalProtocolError(),
+                .Data => |data| {
+                    _ = try self.body_writer.write(self.writer, data.bytes);
+                    if (self.body_writer.is_done()) {
+                        self.state = .Done;
+                    }
+                },
+                else => return error.LocalProtocolError,
             }
-        }
-
-        inline fn triggerLocalProtocolError(self: *Self) SMError!void {
-            self.state = .Error;
-            return error.LocalProtocolError;
         }
     };
 }
@@ -74,126 +112,70 @@ const expectError = std.testing.expectError;
 
 const TestClientSM = ClientSM(std.io.FixedBufferStream([]u8).Writer);
 
-test "Send - Can send a Request event when state is Idle" {
+test "Write - Success" {
     var buffer: [100]u8 = undefined;
     var fixed_buffer = std.io.fixedBufferStream(&buffer);
-    var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
+    var client = TestClientSM.init(fixed_buffer.writer());
 
-    var headers = Headers.init(std.testing.allocator);
-    _ = try headers.append("Host", "www.ziglang.org");
-    _ = try headers.append("GOTTA-GO", "FAST!");
-    defer headers.deinit();
+    try client.write(.{ .Request = .{ .target = "/" } });
+    try client.write(.{ .Header = try Header.init("Host", "www.ziglang.org") });
+    try client.write(.EndOfHeader);
 
-    var requestEvent = try Request.init(Method.Get, "/", Version.Http11, headers);
-    try client.send(Event{ .Request = requestEvent });
-
-    var expected = "GET / HTTP/1.1\r\nHost: www.ziglang.org\r\nGOTTA-GO: FAST!\r\n\r\n";
+    var expected = "GET / HTTP/1.1\r\nHost: www.ziglang.org\r\n\r\n";
     try expect(std.mem.startsWith(u8, &buffer, expected));
-    try expect(client.state == .SendBody);
-}
-
-test "Send - Cannot send any other event when state is Idle" {
-    var buffer: [100]u8 = undefined;
-    var fixed_buffer = std.io.fixedBufferStream(&buffer);
-    var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
-
-    const failure = client.send(.EndOfMessage);
-
-    try expect(client.state == .Error);
-    try expectError(error.LocalProtocolError, failure);
-}
-
-test "Send - Can send a Data event when state is SendBody" {
-    var buffer: [100]u8 = undefined;
-    var fixed_buffer = std.io.fixedBufferStream(&buffer);
-    var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
-
-    client.state = .SendBody;
-    var data = Event{ .Data = Data{ .bytes = "It's raining outside, damned Brittany !" } };
-
-    try client.send(data);
-
-    try expect(client.state == .SendBody);
-    try expect(std.mem.startsWith(u8, &buffer, "It's raining outside, damned Brittany !"));
-}
-
-test "Send - Can send a EndOfMessage event when state is SendBody" {
-    var buffer: [100]u8 = undefined;
-    var fixed_buffer = std.io.fixedBufferStream(&buffer);
-    var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
-    client.state = .SendBody;
-
-    _ = try client.send(.EndOfMessage);
-
     try expect(client.state == .Done);
 }
 
-test "Send - Cannot send any other event when state is SendBody" {
+test "Write - Fail when the host header is missing in an HTTP/1.1 request" {
     var buffer: [100]u8 = undefined;
     var fixed_buffer = std.io.fixedBufferStream(&buffer);
-    var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
-    client.state = .SendBody;
+    var client = TestClientSM.init(fixed_buffer.writer());
 
-    const failure = client.send(.ConnectionClosed);
+    try client.write(.{ .Request = .{ .target = "/" } });
+    const failure = client.write(.EndOfHeader);
 
+    try expectError(error.MissingHostHeader, failure);
     try expect(client.state == .Error);
-    try expectError(error.LocalProtocolError, failure);
 }
 
-test "Send - Can send a ConnectionClosed event when state is Done" {
+test "Write - HTTP/1.0 request may not contain a host header" {
     var buffer: [100]u8 = undefined;
     var fixed_buffer = std.io.fixedBufferStream(&buffer);
-    var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
-    client.state = .Done;
+    var client = TestClientSM.init(fixed_buffer.writer());
 
-    _ = try client.send(.ConnectionClosed);
+    try client.write(.{ .Request = .{ .target = "/", .version = .Http10 } });
+    try client.write(.EndOfHeader);
 
-    try expect(client.state == .Closed);
+    var expected = "GET / HTTP/1.0\r\n\r\n";
+    try expect(std.mem.startsWith(u8, &buffer, expected));
+    try expect(client.state == .Done);
 }
 
-test "Send - Cannot send any other event when state is Done" {
+test "Write - Fail to send multiple host headers" {
     var buffer: [100]u8 = undefined;
     var fixed_buffer = std.io.fixedBufferStream(&buffer);
-    var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
-    client.state = .Done;
+    var client = TestClientSM.init(fixed_buffer.writer());
 
-    const failure = client.send(.EndOfMessage);
+    try client.write(.{ .Request = .{ .target = "/" } });
+    try client.write(.{ .Header = try Header.init("Host", "www.ziglang.org") });
+    const failure = client.write(.{ .Header = try Header.init("Host", "www.ziglang.org") });
 
+    try expectError(error.TooManyHostHeaders, failure);
     try expect(client.state == .Error);
-    try expectError(error.LocalProtocolError, failure);
 }
 
-test "Send - Can send a ConnectionClosed event when state is Closed" {
+test "Write - Content-length framed request" {
     var buffer: [100]u8 = undefined;
     var fixed_buffer = std.io.fixedBufferStream(&buffer);
-    var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
-    client.state = .Closed;
+    var client = TestClientSM.init(fixed_buffer.writer());
 
-    _ = try client.send(.ConnectionClosed);
+    try client.write(.{ .Request = .{ .method = .Post, .target = "/" } });
+    try client.write(.{ .Header = try Header.init("Host", "www.ziglang.org") });
+    try client.write(.{ .Header = try Header.init("Content-Length", "14") });
+    try client.write(.EndOfHeader);
+    try client.write(.{ .Data = .{ .bytes = "GOTTA GO FAST!" } });
 
-    try expect(client.state == .Closed);
-}
-
-test "Send - Cannot send any other event when state is Closed" {
-    var buffer: [100]u8 = undefined;
-    var fixed_buffer = std.io.fixedBufferStream(&buffer);
-    var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
-    client.state = .Closed;
-
-    const failure = client.send(.EndOfMessage);
-
-    try expect(client.state == .Error);
-    try expectError(error.LocalProtocolError, failure);
-}
-
-test "Send - Cannot send any event when state is Error" {
-    var buffer: [100]u8 = undefined;
-    var fixed_buffer = std.io.fixedBufferStream(&buffer);
-    var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
-    client.state = .Error;
-
-    const failure = client.send(.EndOfMessage);
-
-    try expect(client.state == .Error);
-    try expectError(error.LocalProtocolError, failure);
+    var expected = "POST / HTTP/1.1\r\nHost: www.ziglang.org\r\nContent-Length: 14\r\n\r\nGOTTA GO FAST!";
+    try expect(std.mem.startsWith(u8, &buffer, expected));
+    try expect(client.state == .Done);
 }

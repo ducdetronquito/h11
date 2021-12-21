@@ -1,17 +1,17 @@
 const std = @import("std");
-const Data = @import("../events/events.zig").Data;
-const Event = @import("../events/events.zig").Event;
-
-pub const Error = error{
-    BodyTooshort,
-    BodyTooLarge,
-};
+const Data = @import("events/main.zig").Data;
+const Event = @import("events/main.zig").Event;
 
 pub const ContentLengthReader = struct {
     expected_length: usize,
     read_bytes: usize = 0,
 
-    pub fn read(self: *ContentLengthReader, reader: anytype, buffer: []u8) !Event {
+    pub const Error = error{
+        BodyTooshort,
+        BodyTooLarge,
+    };
+
+    pub inline fn read(self: *ContentLengthReader, reader: anytype, buffer: []u8) !Event {
         if (self.read_bytes == self.expected_length) {
             return .EndOfMessage;
         }

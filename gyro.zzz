@@ -1,7 +1,6 @@
 pkgs:
   h11:
     version: 0.1.1
-    root: src/main.zig
     description: I/O free HTTP/1.1 implementation for Zig 🦎
     license: 0BSD
     source_url: "https://github.com/ducdetronquito/h11"
@@ -9,6 +8,7 @@ pkgs:
       http
       parser
       io-free
+    root: src/main.zig
     files:
       README.md
       LICENSE.txt
@@ -16,6 +16,9 @@ pkgs:
       src/events/*.zig
       src/readers/*.zig
       src/state_machines/*.zig
-
 deps:
-  ducdetronquito/http: ^0.1.3
+  http:
+    git:
+      url: "https://github.com/ducdetronquito/http.git"
+      ref: release/0.2.0
+      root: src/main.zig
