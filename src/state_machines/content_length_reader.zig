@@ -1,6 +1,6 @@
 const std = @import("std");
-const Data = @import("../events/events.zig").Data;
-const Event = @import("../events/events.zig").Event;
+const Data = @import("events/main.zig").Data;
+const Event = @import("events/main.zig").Event;
 
 pub const Error = error{
     BodyTooshort,

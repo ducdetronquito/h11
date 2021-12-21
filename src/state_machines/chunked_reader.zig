@@ -1,5 +1,5 @@
-const Data = @import("../events/events.zig").Data;
-const Event = @import("../events/events.zig").Event;
+const Data = @import("events/main.zig").Data;
+const Event = @import("events/main.zig").Event;
 const std = @import("std");
 
 pub const ChunkedReader = struct {
@@ -9,7 +9,7 @@ pub const ChunkedReader = struct {
     state: State = .ReadChunkSize,
 
     // An 8 bytes chunk size allows a chunk to be at most 16 777 215 bytes long.
-    const MaxChunkSizeLength = 8;
+    const MaxChunkSizeLength = 16_777_215;
 
     const State = enum {
         ReadChunkSize,
@@ -33,11 +33,15 @@ pub const ChunkedReader = struct {
     }
 
     fn readChunkSize(self: *Self, reader: anytype, buffer: []u8) !?Event {
-        var line: [MaxChunkSizeLength]u8 = undefined;
-        _ = try reader.read(&line);
-        const line_end = std.mem.indexOfPosLinear(u8, &line, 0, "\r\n") orelse return error.RemoteProtocolError;
-        try reader.putBack(line[line_end + 2 ..]);
-        self.chunk_size = try parseChunkSize(line[0..line_end]);
+        var line = (try reader.readUntilDelimiterOrEof(buffer[self.bytes_read..], '\n')) orelse return error.EndOfStream;
+        if (line[line.len - 1] != '\r') {
+            return error.Invalid;
+        }
+        line = line[0..line.len - 1];
+        self.chunk_size = std.fmt.parseUnsigned(usize, line, 16) catch return error.InvalidChunk;
+        if (self.chunk_size > MaxChunkSizeLength) {
+            return error.InvalidChunk;
+        }
 
         if (self.chunk_size > 0) {
             self.state = .ReadChunk;
@@ -54,6 +58,7 @@ pub const ChunkedReader = struct {
     fn readChunk(self: *Self, reader: anytype, buffer: []u8) !?Event {
         const remaining_space_left = buffer.len - self.bytes_read;
         const bytes_to_read = std.math.min(self.chunk_size, remaining_space_left);
+
         const count = try reader.read(buffer[self.bytes_read .. self.bytes_read + bytes_to_read]);
         if (count == 0) {
             return error.EndOfStream;
@@ -79,20 +84,11 @@ pub const ChunkedReader = struct {
         _ = try reader.read(&chunk_end);
 
         if (!std.mem.eql(u8, &chunk_end, "\r\n")) {
-            return error.RemoteProtocolError;
+            return error.InvalidChunk;
         }
 
         self.state = .ReadChunkSize;
         return null;
-    }
-
-    fn parseChunkSize(hex_length: []const u8) !usize {
-        var length: usize = 0;
-        for (hex_length) |char| {
-            const digit = std.fmt.charToDigit(char, 16) catch return error.RemoteProtocolError;
-            length = (length << 4) | @as(usize, (digit & 0xF));
-        }
-        return length;
     }
 };
 
@@ -102,11 +98,12 @@ const expectError = std.testing.expectError;
 
 test "ChunkedReader - Read a chunk" {
     const content = "E\r\nGotta go fast!\r\n0\r\n\r\n";
-    var reader = std.io.peekStream(1024, std.io.fixedBufferStream(content).reader());
+    var reader = std.io.fixedBufferStream(content).reader();
 
     var body_reader = ChunkedReader{};
     var buffer: [32]u8 = undefined;
     var event = try body_reader.read(&reader, &buffer);
+    std.debug.print("YO='{s}'", .{event.Data.bytes});
     try expectEqualStrings(event.Data.bytes, "Gotta go fast!");
 
     event = try body_reader.read(&reader, &buffer);
@@ -115,7 +112,7 @@ test "ChunkedReader - Read a chunk" {
 
 test "ChunkedReader - Read multiple chunks" {
     const content = "E\r\nGotta go fast!\r\n7\r\nZiguana\r\n0\r\n\r\n";
-    var reader = std.io.peekStream(1024, std.io.fixedBufferStream(content).reader());
+    var reader = std.io.fixedBufferStream(content).reader();
 
     var body_reader = ChunkedReader{};
     var buffer: [14]u8 = undefined;
@@ -131,7 +128,7 @@ test "ChunkedReader - Read multiple chunks" {
 
 test "ChunkedReader - Read a chunk with a smaller buffer" {
     const content = "E\r\nGotta go fast!\r\n0\r\n\r\n";
-    var reader = std.io.peekStream(1024, std.io.fixedBufferStream(content).reader());
+    var reader = std.io.fixedBufferStream(content).reader();
 
     var body_reader = ChunkedReader{};
     var buffer: [7]u8 = undefined;
@@ -147,7 +144,7 @@ test "ChunkedReader - Read a chunk with a smaller buffer" {
 
 test "ChunkedReader - Read multiple chunks with a smaller buffer" {
     const content = "E\r\nGotta go fast!\r\n7\r\nZiguana\r\n0\r\n\r\n";
-    var reader = std.io.peekStream(1024, std.io.fixedBufferStream(content).reader());
+    var reader = std.io.fixedBufferStream(content).reader();
 
     var body_reader = ChunkedReader{};
     var buffer: [7]u8 = undefined;
@@ -166,7 +163,7 @@ test "ChunkedReader - Read multiple chunks with a smaller buffer" {
 
 test "ChunkedReader - Read multiple chunks in the same user buffer" {
     const content = "E\r\nGotta go fast!\r\n7\r\nZiguana\r\n6\r\nStonks\r\n0\r\n\r\n";
-    var reader = std.io.peekStream(1024, std.io.fixedBufferStream(content).reader());
+    var reader = std.io.fixedBufferStream(content).reader();
 
     var body_reader = ChunkedReader{};
     var buffer: [32]u8 = undefined;
@@ -180,7 +177,7 @@ test "ChunkedReader - Read multiple chunks in the same user buffer" {
 
 test "ChunkedReader - When the inner buffer is smaller than the user buffer" {
     const content = ("3E8\r\n" ++ "a" ** 200 ++ "b" ** 200 ++ "c" ** 200 ++ "d" ** 200 ++ "e" ** 200 ++ "\r\n0\r\n\r\n");
-    var reader = std.io.peekStream(1024, std.io.fixedBufferStream(content).reader());
+    var reader = std.io.fixedBufferStream(content).reader();
 
     var body_reader = ChunkedReader{};
     var buffer: [200]u8 = undefined;
@@ -205,33 +202,33 @@ test "ChunkedReader - When the inner buffer is smaller than the user buffer" {
 
 test "ChunkedReader - Fail to read a chunk size which is not hexadecimal" {
     const content = "XXX\r\nGotta go fast!\r\n0\r\n\r\n";
-    var reader = std.io.peekStream(1024, std.io.fixedBufferStream(content).reader());
+    var reader = std.io.fixedBufferStream(content).reader();
 
     var body_reader = ChunkedReader{};
     var buffer: [32]u8 = undefined;
 
-    var failure = body_reader.read(&reader, &buffer);
-    try expectError(error.RemoteProtocolError, failure);
+    const failure = body_reader.read(&reader, &buffer);
+    try expectError(error.InvalidChunk, failure);
 }
 
 test "ChunkedReader - Fail to read too large chunk" {
     const content = "1000000\r\nGotta go fast!\r\n0\r\n\r\n";
-    var reader = std.io.peekStream(1024, std.io.fixedBufferStream(content).reader());
+    var reader = std.io.fixedBufferStream(content).reader();
 
     var body_reader = ChunkedReader{};
     var buffer: [32]u8 = undefined;
 
-    var failure = body_reader.read(&reader, &buffer);
-    try expectError(error.RemoteProtocolError, failure);
+    const failure = body_reader.read(&reader, &buffer);
+    try expectError(error.InvalidChunk, failure);
 }
 
 test "ChunkedReader - Fail when not enough data can be read" {
     const content = "E\r\nGotta go fast!\r\n7\r\nZi";
-    var reader = std.io.peekStream(1024, std.io.fixedBufferStream(content).reader());
+    var reader = std.io.fixedBufferStream(content).reader();
 
     var body_reader = ChunkedReader{};
     var buffer: [50]u8 = undefined;
 
-    var failure = body_reader.read(&reader, &buffer);
+    const failure = body_reader.read(&reader, &buffer);
     try expectError(error.EndOfStream, failure);
 }

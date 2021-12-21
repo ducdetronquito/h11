@@ -1,61 +1,57 @@
-const Allocator = std.mem.Allocator;
-const Buffer = std.ArrayList(u8);
-const BodyReader = @import("../readers/readers.zig").BodyReader;
-const Data = @import("../events/events.zig").Data;
-const Event = @import("../events/events.zig").Event;
+const BodyReader = @import("body_reader.zig").BodyReader;
+const Event = @import("events/main.zig").Event;
+const FramingContext = @import("body_reader.zig").FramingContext;
+const Header = @import("events/main.zig").Header;
+const Request = @import("events/main.zig").Request;
+const Response = @import("events/main.zig").Response;
 const Method = @import("http").Method;
-const Request = @import("../events/events.zig").Request;
-const Response = @import("../events/events.zig").Response;
 const SMError = @import("errors.zig").SMError;
 const State = @import("states.zig").State;
 const StatusCode = @import("http").StatusCode;
 const std = @import("std");
-const Version = @import("http").Version;
-
-const MaximumResponseSize = 64_000;
-const ReaderLookahead = 32;
+const TransferEncoding = @import("encoding.zig").TransferEncoding;
 
 pub fn ServerSM(comptime Reader: type) type {
     return struct {
         const Self = @This();
 
-        allocator: Allocator,
-        body_reader: ?BodyReader,
-        expected_request: ?Request,
-        state: State,
-        reader: std.io.PeekStream(.{ .Static = ReaderLookahead }, Reader),
+        body_reader: BodyReader = undefined,
+        framing_context: FramingContext = FramingContext {},
+        reader: Reader,
+        state: State = .Idle,
 
-        pub fn init(allocator: Allocator, reader: Reader) Self {
-            return .{ .allocator = allocator, .body_reader = null, .expected_request = null, .state = State.Idle, .reader = std.io.peekStream(ReaderLookahead, reader) };
+        pub fn init(reader: Reader) Self {
+            return .{ .reader = reader };
         }
 
         pub fn deinit(self: *Self) void {
-            self.body_reader = null;
-            self.expected_request = null;
+            self.body_reader = undefined;
+            self.framing_context = FramingContext {};
             self.state = State.Idle;
         }
 
-        pub fn expectEvent(self: *Self, event: Event) void {
-            switch (event) {
-                .Request => |request| {
-                    self.expected_request = request;
-                },
-                else => {},
-            }
-        }
-
-        pub fn nextEvent(self: *Self, options: anytype) !Event {
+        pub fn nextEvent(self: *Self, buffer: []u8) !Event {
             return switch (self.state) {
                 .Idle => {
-                    var event = self.readResponse() catch |err| {
+                    var event = self.readResponse(buffer) catch |err| {
                         self.state = .Error;
                         return err;
                     };
-                    self.state = .SendBody;
+                    self.state = .SendHeader;
+                    return event;
+                },
+                .SendHeader => {
+                    var event = self.readHeader(buffer) catch |err| {
+                        self.state = .Error;
+                        return err;
+                    };
+                    if (event == .EndOfHeader) {
+                        self.state = .SendBody;
+                    }
                     return event;
                 },
                 .SendBody => {
-                    var event = self.readData(options) catch |err| {
+                    var event = self.readData(buffer) catch |err| {
                         self.state = .Error;
                         return err;
                     };
@@ -73,75 +69,34 @@ pub fn ServerSM(comptime Reader: type) type {
             };
         }
 
-        fn readResponse(self: *Self) !Event {
-            var raw_response = try self.readRawResponse();
+        fn readResponse(self: *Self, buffer: []u8) !Event {
+            var response = try Response.parse(self.reader, buffer);
+            self.framing_context.status_code = response.status_code;
+            return Event { .Response = response };
+        }
 
-            var response = Response.parse(self.allocator, raw_response) catch |err| {
-                self.allocator.free(raw_response);
-                return err;
+        fn readHeader(self: *Self, buffer: []u8) !Event {
+            const header = (try Header.parse(self.reader, buffer)) orelse {
+                self.body_reader = try BodyReader.frame(self.framing_context);
+                return .EndOfHeader;
             };
-            errdefer response.deinit();
 
-            self.body_reader = try BodyReader.frame(self.expected_request.?.method, response.statusCode, response.headers);
+            if (std.ascii.eqlIgnoreCase(header.name, "content-length")) {
+                self.framing_context.content_length = std.fmt.parseInt(usize, header.value, 10) catch return error.InvalidContentLength;
+                self.framing_context.transfert_encoding = .ContentLength;
+            } else if (std.ascii.eqlIgnoreCase(header.name, "transfer-encoding")) {
+                if (std.mem.endsWith(u8, header.value, "chunked")) {
+                    self.framing_context.transfert_encoding = .Chunked;
+                } else {
+                    return error.UnknownTranfertEncoding;
+                }
+            }
 
-            return Event{ .Response = response };
+            return Event{ .Header = header };
         }
 
-        fn readData(self: *Self, options: anytype) !Event {
-            if (!@hasField(@TypeOf(options), "buffer")) {
-                @panic("You must provide a buffer to read into.");
-            }
-            return try self.body_reader.?.read(&self.reader, options.buffer);
-        }
-
-        fn readRawResponse(self: *Self) ![]u8 {
-            var response_buffer = std.ArrayList(u8).init(self.allocator);
-            errdefer response_buffer.deinit();
-
-            var buffer: [ReaderLookahead]u8 = undefined;
-            var count = try self.reader.read(&buffer);
-            if (count == 0) {
-                return error.EndOfStream;
-            }
-
-            var index = std.mem.indexOf(u8, &buffer, "\r\n\r\n");
-            if (index != null) {
-                const response = buffer[0 .. index.? + 4];
-                try response_buffer.appendSlice(response);
-                if (response.len < count) {
-                    try self.reader.putBack(buffer[response.len..count]);
-                }
-                return response_buffer.toOwnedSlice();
-            }
-
-            try response_buffer.appendSlice(buffer[0..count]);
-            try self.reader.putBack(buffer[count - 3 .. count]);
-
-            while (true) {
-                if (response_buffer.items.len > MaximumResponseSize) {
-                    return error.ResponseTooLarge;
-                }
-
-                count = try self.reader.read(&buffer);
-                if (count == 0) {
-                    return error.EndOfStream;
-                }
-
-                index = std.mem.indexOf(u8, &buffer, "\r\n\r\n");
-                if (index != null) {
-                    const response_end = index.? + 4;
-                    try response_buffer.appendSlice(buffer[3..response_end]);
-
-                    var body = buffer[response_end..count];
-                    try self.reader.putBack(body);
-                    break;
-                }
-
-                try response_buffer.appendSlice(buffer[3..count]);
-                try self.reader.putBack(buffer[count - 3 .. count]);
-            }
-
-            return response_buffer.toOwnedSlice();
+        fn readData(self: *Self, buffer: []u8) !Event {
+            return try self.body_reader.read(&self.reader, buffer);
         }
     };
 }
@@ -156,67 +111,54 @@ const TestServerSM = ServerSM(std.io.FixedBufferStream([]const u8).Reader);
 test "NextEvent - Can retrieve a Response event when state is Idle" {
     const content = "HTTP/1.1 200 OK\r\nServer: Apache\r\nContent-Length: 0\r\n\r\n";
     var reader = std.io.fixedBufferStream(content).reader();
-    var server = TestServerSM.init(std.testing.allocator, reader);
-    defer server.deinit();
-
-    var request = Request.default(std.testing.allocator);
-    defer request.deinit();
-    server.expectEvent(Event{ .Request = request });
-
-    var event = try server.nextEvent(.{});
-    try expect(event.Response.statusCode == .Ok);
-    try expect(event.Response.version == .Http11);
-    try expect(server.state == .SendBody);
-    event.Response.deinit();
+    var server = TestServerSM.init(reader);
 
     var buffer: [100]u8 = undefined;
-    event = try server.nextEvent(.{ .buffer = &buffer });
+    var event = try server.nextEvent(&buffer);
+    try expect(event.Response.status_code == .Ok);
+    try expect(event.Response.version == .Http11);
+
+    event = try server.nextEvent(&buffer);
+    try expect(std.mem.eql(u8, event.Header.name, "Server"));
+    try expect(std.mem.eql(u8, event.Header.value, "Apache"));
+
+    event = try server.nextEvent(&buffer);
+    try expect(std.mem.eql(u8, event.Header.name, "Content-Length"));
+    try expect(std.mem.eql(u8, event.Header.value, "0"));
+
+    event = try server.nextEvent(&buffer);
+    try expect(event == .EndOfHeader);
+
+    event = try server.nextEvent(&buffer);
     try expect(event == .EndOfMessage);
 }
 
 test "NextEvent - Can retrieve a Response and Data when state is Idle" {
-    const content = "HTTP/1.1 200 OK\r\nServer: Apache\r\nContent-Length: 14\r\n\r\nGotta go fast!";
+    const content = "HTTP/1.1 200 OK\r\nContent-Length: 14\r\n\r\nGotta go fast!";
     var reader = std.io.fixedBufferStream(content).reader();
-    var server = TestServerSM.init(std.testing.allocator, reader);
-    defer server.deinit();
-
-    var request = Request.default(std.testing.allocator);
-    defer request.deinit();
-    server.expectEvent(Event{ .Request = request });
-
-    var event = try server.nextEvent(.{});
-    try expect(event.Response.statusCode == .Ok);
-    try expect(event.Response.version == .Http11);
-    try expect(server.state == .SendBody);
-    event.Response.deinit();
+    var server = TestServerSM.init(reader);
 
     var buffer: [100]u8 = undefined;
-    event = try server.nextEvent(.{ .buffer = &buffer });
-    try expectEqualStrings(event.Data.bytes, "Gotta go fast!");
-    try expectEqualStrings(buffer[0..14], "Gotta go fast!");
-    try expect(server.state == .SendBody);
+    var event = try server.nextEvent(&buffer);
+    try expect(event.Response.status_code == .Ok);
+    try expect(event.Response.version == .Http11);
 
-    event = try server.nextEvent(.{ .buffer = &buffer });
+    event = try server.nextEvent(&buffer);
+    try expect(std.mem.eql(u8, event.Header.name, "Content-Length"));
+    try expect(std.mem.eql(u8, event.Header.value, "14"));
+
+    event = try server.nextEvent(&buffer);
+    try expect(event == .EndOfHeader);
+
+    event = try server.nextEvent(&buffer);
+    try expectEqualStrings(event.Data.bytes, "Gotta go fast!");
+
+    event = try server.nextEvent(&buffer);
     try expect(event == .EndOfMessage);
     try expect(server.state == .Done);
 }
 
-test "NextEvent - When the response size is above the limit - Returns ResponseTooLarge" {
-    const content = "HTTP/1.1 200 OK\r\nCookie: " ++ "a" ** 65_000 ++ "\r\n\r\n";
-    var reader = std.io.fixedBufferStream(content).reader();
-    var server = TestServerSM.init(std.testing.allocator, reader);
-    defer server.deinit();
-
-    var request = Request.default(std.testing.allocator);
-    defer request.deinit();
-    server.expectEvent(Event{ .Request = request });
-
-    const failure = server.nextEvent(.{});
-
-    try expectError(error.ResponseTooLarge, failure);
-}
-
-test "NextEvent - When fail to read from the reader - Returns reader' error" {
+test "NextEvent - When fail to read from the reader - Returns reader's error" {
     const FailingReader = struct {
         const Self = @This();
         const ReadError = error{Failed};
@@ -233,14 +175,10 @@ test "NextEvent - When fail to read from the reader - Returns reader' error" {
     };
 
     var failing_reader = FailingReader{};
-    var server = ServerSM(FailingReader.Reader).init(std.testing.allocator, failing_reader.reader());
-    defer server.deinit();
+    var server = ServerSM(FailingReader.Reader).init(failing_reader.reader());
 
-    var request = Request.default(std.testing.allocator);
-    defer request.deinit();
-    server.expectEvent(Event{ .Request = request });
-
-    const failure = server.nextEvent(.{});
+    var buffer: [100]u8 = undefined;
+    const failure = server.nextEvent(&buffer);
 
     try expectError(error.Failed, failure);
 }
@@ -248,10 +186,10 @@ test "NextEvent - When fail to read from the reader - Returns reader' error" {
 test "NextEvent - Cannot retrieve a response event if the data is invalid" {
     const content = "INVALID RESPONSE\r\n\r\n";
     var reader = std.io.fixedBufferStream(content).reader();
-    var server = TestServerSM.init(std.testing.allocator, reader);
-    defer server.deinit();
+    var server = TestServerSM.init(reader);
 
-    var event = server.nextEvent(.{});
+    var buffer: [100]u8 = undefined;
+    var event = server.nextEvent(&buffer);
 
     try expectError(error.Invalid, event);
     try expect(server.state == .Error);
@@ -260,11 +198,11 @@ test "NextEvent - Cannot retrieve a response event if the data is invalid" {
 test "NextEvent - Retrieve a ConnectionClosed event when state is Done" {
     const content = "";
     var reader = std.io.fixedBufferStream(content).reader();
-    var server = TestServerSM.init(std.testing.allocator, reader);
+    var server = TestServerSM.init(reader);
     server.state = .Done;
-    defer server.deinit();
 
-    var event = try server.nextEvent(.{});
+    var buffer: [100]u8 = undefined;
+    var event = try server.nextEvent(&buffer);
 
     try expect(event == .ConnectionClosed);
     try expect(server.state == .Closed);
@@ -273,12 +211,52 @@ test "NextEvent - Retrieve a ConnectionClosed event when state is Done" {
 test "NextEvent - Retrieve a ConnectionClosed event when state is Closed" {
     const content = "";
     var reader = std.io.fixedBufferStream(content).reader();
-    var server = TestServerSM.init(std.testing.allocator, reader);
+    var server = TestServerSM.init(reader);
     server.state = .Closed;
-    defer server.deinit();
 
-    var event = try server.nextEvent(.{});
+    var buffer: [100]u8 = undefined;
+    var event = try server.nextEvent(&buffer);
 
     try expect(event == .ConnectionClosed);
     try expect(server.state == .Closed);
 }
+
+test "NextEvent - Fail when chunked is not the final encoding" {
+    const content = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked, gzip\r\n\r\n";
+    var reader = std.io.fixedBufferStream(content).reader();
+    var server = TestServerSM.init(reader);
+
+    var buffer: [100]u8 = undefined;
+    _ = try server.nextEvent(&buffer);
+
+    const failure = server.nextEvent(&buffer);
+    try expectError(error.UnknownTranfertEncoding, failure);
+}
+
+test "NextEvent - Fail when the provided content length is invalid" {
+    const content = "HTTP/1.1 200 OK\r\nContent-Length: XX\r\n\r\nGotta go fast!";
+    var reader = std.io.fixedBufferStream(content).reader();
+    var server = TestServerSM.init(reader);
+
+    var buffer: [100]u8 = undefined;
+    _ = try server.nextEvent(&buffer);
+
+    const failure = server.nextEvent(&buffer);
+    try expectError(error.InvalidContentLength, failure);
+}
+
+// test "NextEvent - When the response size is above the limit - Returns ResponseTooLarge" {
+//     const content = "HTTP/1.1 200 OK\r\nCookie: " ++ "a" ** 65_000 ++ "\r\n\r\n";
+//     var reader = std.io.fixedBufferStream(content).reader();
+//     var server = TestServerSM.init(std.testing.allocator, reader);
+//     defer server.deinit();
+
+//     var request = Request.default(std.testing.allocator);
+//     defer request.deinit();
+//     server.expectEvent(Event{ .Request = request });
+
+//     var buffer: [100]u8 = undefined;
+//     const failure = server.nextEvent(&buffer);
+
+//     try expectError(error.ResponseTooLarge, failure);
+// }

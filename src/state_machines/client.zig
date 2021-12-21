@@ -1,9 +1,9 @@
 const Allocator = std.mem.Allocator;
-const Data = @import("../events/events.zig").Data;
-const Event = @import("../events/events.zig").Event;
+const Data = @import("events/main.zig").Data;
+const Event = @import("events/main.zig").Event;
 const Headers = @import("http").Headers;
 const Method = @import("http").Method;
-const Request = @import("../events/events.zig").Request;
+const Request = @import("events/main.zig").Request;
 const State = @import("states.zig").State;
 const std = @import("std");
 const SMError = @import("errors.zig").SMError;
@@ -74,126 +74,126 @@ const expectError = std.testing.expectError;
 
 const TestClientSM = ClientSM(std.io.FixedBufferStream([]u8).Writer);
 
-test "Send - Can send a Request event when state is Idle" {
-    var buffer: [100]u8 = undefined;
-    var fixed_buffer = std.io.fixedBufferStream(&buffer);
-    var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
+// test "Send - Can send a Request event when state is Idle" {
+//     var buffer: [100]u8 = undefined;
+//     var fixed_buffer = std.io.fixedBufferStream(&buffer);
+//     var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
 
-    var headers = Headers.init(std.testing.allocator);
-    _ = try headers.append("Host", "www.ziglang.org");
-    _ = try headers.append("GOTTA-GO", "FAST!");
-    defer headers.deinit();
+//     var headers = Headers.init(std.testing.allocator);
+//     _ = try headers.append("Host", "www.ziglang.org");
+//     _ = try headers.append("GOTTA-GO", "FAST!");
+//     defer headers.deinit();
 
-    var requestEvent = try Request.init(Method.Get, "/", Version.Http11, headers);
-    try client.send(Event{ .Request = requestEvent });
+//     var requestEvent = try Request.init(Method.Get, "/", Version.Http11, headers);
+//     try client.send(Event{ .Request = requestEvent });
 
-    var expected = "GET / HTTP/1.1\r\nHost: www.ziglang.org\r\nGOTTA-GO: FAST!\r\n\r\n";
-    try expect(std.mem.startsWith(u8, &buffer, expected));
-    try expect(client.state == .SendBody);
-}
+//     var expected = "GET / HTTP/1.1\r\nHost: www.ziglang.org\r\nGOTTA-GO: FAST!\r\n\r\n";
+//     try expect(std.mem.startsWith(u8, &buffer, expected));
+//     try expect(client.state == .SendBody);
+// }
 
-test "Send - Cannot send any other event when state is Idle" {
-    var buffer: [100]u8 = undefined;
-    var fixed_buffer = std.io.fixedBufferStream(&buffer);
-    var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
+// test "Send - Cannot send any other event when state is Idle" {
+//     var buffer: [100]u8 = undefined;
+//     var fixed_buffer = std.io.fixedBufferStream(&buffer);
+//     var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
 
-    const failure = client.send(.EndOfMessage);
+//     const failure = client.send(.EndOfMessage);
 
-    try expect(client.state == .Error);
-    try expectError(error.LocalProtocolError, failure);
-}
+//     try expect(client.state == .Error);
+//     try expectError(error.LocalProtocolError, failure);
+// }
 
-test "Send - Can send a Data event when state is SendBody" {
-    var buffer: [100]u8 = undefined;
-    var fixed_buffer = std.io.fixedBufferStream(&buffer);
-    var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
+// test "Send - Can send a Data event when state is SendBody" {
+//     var buffer: [100]u8 = undefined;
+//     var fixed_buffer = std.io.fixedBufferStream(&buffer);
+//     var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
 
-    client.state = .SendBody;
-    var data = Event{ .Data = Data{ .bytes = "It's raining outside, damned Brittany !" } };
+//     client.state = .SendBody;
+//     var data = Event{ .Data = Data{ .bytes = "It's raining outside, damned Brittany !" } };
 
-    try client.send(data);
+//     try client.send(data);
 
-    try expect(client.state == .SendBody);
-    try expect(std.mem.startsWith(u8, &buffer, "It's raining outside, damned Brittany !"));
-}
+//     try expect(client.state == .SendBody);
+//     try expect(std.mem.startsWith(u8, &buffer, "It's raining outside, damned Brittany !"));
+// }
 
-test "Send - Can send a EndOfMessage event when state is SendBody" {
-    var buffer: [100]u8 = undefined;
-    var fixed_buffer = std.io.fixedBufferStream(&buffer);
-    var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
-    client.state = .SendBody;
+// test "Send - Can send a EndOfMessage event when state is SendBody" {
+//     var buffer: [100]u8 = undefined;
+//     var fixed_buffer = std.io.fixedBufferStream(&buffer);
+//     var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
+//     client.state = .SendBody;
 
-    _ = try client.send(.EndOfMessage);
+//     _ = try client.send(.EndOfMessage);
 
-    try expect(client.state == .Done);
-}
+//     try expect(client.state == .Done);
+// }
 
-test "Send - Cannot send any other event when state is SendBody" {
-    var buffer: [100]u8 = undefined;
-    var fixed_buffer = std.io.fixedBufferStream(&buffer);
-    var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
-    client.state = .SendBody;
+// test "Send - Cannot send any other event when state is SendBody" {
+//     var buffer: [100]u8 = undefined;
+//     var fixed_buffer = std.io.fixedBufferStream(&buffer);
+//     var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
+//     client.state = .SendBody;
 
-    const failure = client.send(.ConnectionClosed);
+//     const failure = client.send(.ConnectionClosed);
 
-    try expect(client.state == .Error);
-    try expectError(error.LocalProtocolError, failure);
-}
+//     try expect(client.state == .Error);
+//     try expectError(error.LocalProtocolError, failure);
+// }
 
-test "Send - Can send a ConnectionClosed event when state is Done" {
-    var buffer: [100]u8 = undefined;
-    var fixed_buffer = std.io.fixedBufferStream(&buffer);
-    var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
-    client.state = .Done;
+// test "Send - Can send a ConnectionClosed event when state is Done" {
+//     var buffer: [100]u8 = undefined;
+//     var fixed_buffer = std.io.fixedBufferStream(&buffer);
+//     var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
+//     client.state = .Done;
 
-    _ = try client.send(.ConnectionClosed);
+//     _ = try client.send(.ConnectionClosed);
 
-    try expect(client.state == .Closed);
-}
+//     try expect(client.state == .Closed);
+// }
 
-test "Send - Cannot send any other event when state is Done" {
-    var buffer: [100]u8 = undefined;
-    var fixed_buffer = std.io.fixedBufferStream(&buffer);
-    var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
-    client.state = .Done;
+// test "Send - Cannot send any other event when state is Done" {
+//     var buffer: [100]u8 = undefined;
+//     var fixed_buffer = std.io.fixedBufferStream(&buffer);
+//     var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
+//     client.state = .Done;
 
-    const failure = client.send(.EndOfMessage);
+//     const failure = client.send(.EndOfMessage);
 
-    try expect(client.state == .Error);
-    try expectError(error.LocalProtocolError, failure);
-}
+//     try expect(client.state == .Error);
+//     try expectError(error.LocalProtocolError, failure);
+// }
 
-test "Send - Can send a ConnectionClosed event when state is Closed" {
-    var buffer: [100]u8 = undefined;
-    var fixed_buffer = std.io.fixedBufferStream(&buffer);
-    var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
-    client.state = .Closed;
+// test "Send - Can send a ConnectionClosed event when state is Closed" {
+//     var buffer: [100]u8 = undefined;
+//     var fixed_buffer = std.io.fixedBufferStream(&buffer);
+//     var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
+//     client.state = .Closed;
 
-    _ = try client.send(.ConnectionClosed);
+//     _ = try client.send(.ConnectionClosed);
 
-    try expect(client.state == .Closed);
-}
+//     try expect(client.state == .Closed);
+// }
 
-test "Send - Cannot send any other event when state is Closed" {
-    var buffer: [100]u8 = undefined;
-    var fixed_buffer = std.io.fixedBufferStream(&buffer);
-    var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
-    client.state = .Closed;
+// test "Send - Cannot send any other event when state is Closed" {
+//     var buffer: [100]u8 = undefined;
+//     var fixed_buffer = std.io.fixedBufferStream(&buffer);
+//     var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
+//     client.state = .Closed;
 
-    const failure = client.send(.EndOfMessage);
+//     const failure = client.send(.EndOfMessage);
 
-    try expect(client.state == .Error);
-    try expectError(error.LocalProtocolError, failure);
-}
+//     try expect(client.state == .Error);
+//     try expectError(error.LocalProtocolError, failure);
+// }
 
-test "Send - Cannot send any event when state is Error" {
-    var buffer: [100]u8 = undefined;
-    var fixed_buffer = std.io.fixedBufferStream(&buffer);
-    var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
-    client.state = .Error;
+// test "Send - Cannot send any event when state is Error" {
+//     var buffer: [100]u8 = undefined;
+//     var fixed_buffer = std.io.fixedBufferStream(&buffer);
+//     var client = TestClientSM.init(std.testing.allocator, fixed_buffer.writer());
+//     client.state = .Error;
 
-    const failure = client.send(.EndOfMessage);
+//     const failure = client.send(.EndOfMessage);
 
-    try expect(client.state == .Error);
-    try expectError(error.LocalProtocolError, failure);
-}
+//     try expect(client.state == .Error);
+//     try expectError(error.LocalProtocolError, failure);
+// }

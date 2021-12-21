@@ -1,6 +1,6 @@
 const Allocator = std.mem.Allocator;
 const ClientSM = @import("state_machines/client.zig").ClientSM;
-const Event = @import("events/events.zig").Event;
+const Event = @import("state_machines/events/main.zig").Event;
 const ServerSM = @import("state_machines/server.zig").ServerSM;
 const SMError = @import("state_machines/errors.zig").SMError;
 const std = @import("std");
@@ -13,7 +13,7 @@ pub fn Client(comptime Reader: type, comptime Writer: type) type {
 
         pub fn init(allocator: Allocator, reader: Reader, writer: Writer) Self {
             var localState = ClientSM(Writer).init(allocator, writer);
-            var remoteState = ServerSM(Reader).init(allocator, reader);
+            var remoteState = ServerSM(Reader).init(reader);
 
             return Self{
                 .localState = localState,
@@ -28,11 +28,14 @@ pub fn Client(comptime Reader: type, comptime Writer: type) type {
 
         pub fn send(self: *Self, event: Event) !void {
             try self.localState.send(event);
-            self.remoteState.expectEvent(event);
+            switch(event) {
+                .Request => |request| self.remoteState.framing_context.method = request.method,
+                else => {}
+            }
         }
 
-        pub fn nextEvent(self: *Self, options: anytype) !Event {
-            return self.remoteState.nextEvent(options);
+        pub fn nextEvent(self: *Self, buffer: []u8) !Event {
+            return self.remoteState.nextEvent(buffer);
         }
     };
 }
@@ -40,7 +43,7 @@ pub fn Client(comptime Reader: type, comptime Writer: type) type {
 const expect = std.testing.expect;
 const expectEqualStrings = std.testing.expectEqualStrings;
 const expectError = std.testing.expectError;
-const Request = @import("events/events.zig").Request;
+const Request = @import("state_machines/events/main.zig").Request;
 const TestClient = Client(std.io.FixedBufferStream([]const u8).Reader, std.io.FixedBufferStream([]u8).Writer);
 
 test "Send - Client can send an event" {
@@ -65,9 +68,10 @@ test "Send - Remember the request method when sending a request event" {
     defer client.deinit();
 
     var request = Request.default(std.testing.allocator);
+    request.method = .Post;
     try client.send(Event{ .Request = request });
 
-    try expect(client.remoteState.expected_request.?.method == .Get);
+    try expect(client.remoteState.framing_context.method == .Post);
 }
 
 test "NextEvent - A Response event with a content length muste be followed by a Data event and an EndOfMessage event." {
@@ -76,29 +80,27 @@ test "NextEvent - A Response event with a content length muste be followed by a 
     var write_buffer: [100]u8 = undefined;
     var fixed_write_buffer = std.io.fixedBufferStream(&write_buffer);
     var client = TestClient.init(std.testing.allocator, fixed_read_buffer.reader(), fixed_write_buffer.writer());
+    defer client.deinit();
 
     var request = Request.default(std.testing.allocator);
-    try client.send(Event{ .Request = request });
-
-    var event = try client.nextEvent(.{});
-    try expect(event == .Response);
-    var response = event.Response;
-    defer response.deinit();
+    defer request.deinit();
+    try client.send(.{ .Request = request });
 
     var buffer: [100]u8 = undefined;
-    event = try client.nextEvent(.{ .buffer = &buffer });
-    try expect(event == .Data);
-    var data = event.Data;
+    var event = try client.nextEvent(&buffer);
+    try expect(event.Response.status_code == .Ok);
+    try expect(event.Response.version == .Http11);
 
-    event = try client.nextEvent(.{ .buffer = &buffer });
+    event = try client.nextEvent(&buffer);
+    try expectEqualStrings(event.Header.name, "Content-Length");
+    try expectEqualStrings(event.Header.value, "34");
+
+    event = try client.nextEvent(&buffer);
+    try expect(event == .EndOfHeader);
+
+    event = try client.nextEvent(&buffer);
+    try expectEqualStrings(event.Data.bytes, "Ain't no sunshine when she's gone.");
+
+    event = try client.nextEvent(&buffer);
     try expect(event == .EndOfMessage);
-
-    client.deinit();
-
-    try expect(response.statusCode == .Ok);
-    try expect(response.version == .Http11);
-    try expect(response.headers.len() == 1);
-    try expectEqualStrings(response.headers.items()[0].name.raw(), "Content-Length");
-    try expectEqualStrings(response.headers.items()[0].value, "34");
-    try expectEqualStrings(data.bytes, "Ain't no sunshine when she's gone.");
 }
