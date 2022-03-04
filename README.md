@@ -6,6 +6,8 @@ I/O free state machine implementation of the HTTP/1.1 protocol.
 
 Inspired by the amazing work of [python-hyper](https://github.com/python-hyper/h11).
 
+⚠️ I'm currently renovating an old house which does not allow me to work on [requestz](https://github.com/ducdetronquito/requestz/), [h11](https://github.com/ducdetronquito/h11/) and [http](https://github.com/ducdetronquito/http) as much as I would like to. Further development will likely to start again around december 2022. In the meantime, feel free to fork :)
+
 ## Installation
 
 *h11* is available on [astrolabe.pm](https://astrolabe.pm/) via [gyro](https://github.com/mattnite/gyro)
